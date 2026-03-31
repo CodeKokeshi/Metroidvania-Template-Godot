@@ -1,0 +1,25 @@
+[gd_scene format=3 uid="uid://dsfb5senjhhre"]
+
+[ext_resource type="Texture2D" uid="uid://b2baeo3ry4h7k" path="res://assets/player_related/bullet.png" id="1_p47vg"]
+[ext_resource type="PackedScene" uid="uid://cjg182ux28080" path="res://prefabs/fx/smoke_emission.tscn" id="2_gvg8m"]
+[ext_resource type="Script" path="res://prefabs/player_related/bullet.gd" id="3_2jxbv"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_gvg8m"]
+size = Vector2(4, 4)
+
+[sub_resource type="Curve" id="Curve_gvg8m"]
+_limits = [0.0, 2.0, 0.0, 1.0]
+_data = [Vector2(0, 2), 0.0, 0.0, 0, 0, Vector2(1, 0.9467902), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[node name="bullet" type="CharacterBody2D" unique_id=1654886895]
+script = ExtResource("3_2jxbv")
+
+[node name="sprite" type="Sprite2D" parent="." unique_id=1482267927]
+texture = ExtResource("1_p47vg")
+
+[node name="bodyshape" type="CollisionShape2D" parent="." unique_id=288479218]
+shape = SubResource("RectangleShape2D_gvg8m")
+
+[node name="emission" parent="." unique_id=1948023196 instance=ExtResource("2_gvg8m")]
+scale_amount_curve = SubResource("Curve_gvg8m")

@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://cjg182ux28080"]
+
+[ext_resource type="Texture2D" uid="uid://billi3qeqorho" path="res://assets/player_related/smoke.png" id="1_pddc0"]
+
+[node name="emission" type="CPUParticles2D" unique_id=1948023196]
+emitting = false
+amount = 4
+texture = ExtResource("1_pddc0")
+lifetime = 0.5
+one_shot = true
+explosiveness = 1.0
+spread = 117.14
+gravity = Vector2(0, 0)
+initial_velocity_max = 64.0
+angular_velocity_min = -24.0
+angular_velocity_max = 24.0

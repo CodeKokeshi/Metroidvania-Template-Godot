@@ -1,0 +1,7 @@
+empty (rect/region)
+x = 0, y = 0
+w = 1, h = 1
+
+X sign (rect/region)
+x = 327, y = 129
+w = 12, h = 12
