@@ -1058,3 +1058,8 @@ func _on_sword_hitbox_body_entered(body: Node2D) -> void:
 	remaining_air_jumps = max(remaining_air_jumps, max(0, max_air_jumps))
 	if sword_pogo_debug_logs:
 		print("[Pogo] Triggered on body=", body.name, " attack_pitch_sign=", attack_pitch_sign, " hitbox_y=", sword_hitbox.global_position.y, " player_y=", global_position.y, " queued_upward_speed=", pending_recoil_min_upward_speed)
+
+
+func _on_ladder_detector_body_entered(body: Node2D) -> void:
+	# collission mask is already set up to detect ladder's body.
+	pass # Replace with function body.

@@ -57,6 +57,9 @@ animations = [{
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_63xfj"]
 size = Vector2(12, 18)
 
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_cqeii"]
+size = Vector2(6, 18)
+
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_0bakr"]
 size = Vector2(14, 19)
 
@@ -112,6 +115,15 @@ collision_mask = 8
 position = Vector2(0, 3)
 shape = SubResource("RectangleShape2D_63xfj")
 
+[node name="ladder_detector" type="Area2D" parent="animsprite2D" unique_id=827510445]
+collision_layer = 32
+collision_mask = 16
+
+[node name="ladder_detector_shape" type="CollisionShape2D" parent="animsprite2D/ladder_detector" unique_id=2062065775]
+position = Vector2(0, 3)
+shape = SubResource("RectangleShape2D_cqeii")
+debug_color = Color(0.9824943, 0, 0.36588606, 0.41960785)
+
 [node name="physics-bodyshape" type="CollisionShape2D" parent="." unique_id=702537102]
 position = Vector2(0, 2.5)
 shape = SubResource("RectangleShape2D_0bakr")
@@ -154,5 +166,6 @@ position = Vector2(12, 0)
 position = Vector2(12, 0)
 
 [connection signal="body_entered" from="animsprite2D/hurtbox" to="." method="_on_hurtbox_body_entered"]
+[connection signal="body_entered" from="animsprite2D/ladder_detector" to="." method="_on_ladder_detector_body_entered"]
 [connection signal="animation_finished" from="pivot/weapon" to="." method="_on_weapon_slash_animation_finished"]
 [connection signal="body_entered" from="pivot/weapon/sword_hitbox" to="." method="_on_sword_hitbox_body_entered"]

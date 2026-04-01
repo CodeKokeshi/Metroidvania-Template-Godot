@@ -72,6 +72,8 @@ dash={
 2d_physics/layer_2="sword_hitbox"
 2d_physics/layer_3="player_hurtbox"
 2d_physics/layer_4="traps"
+2d_physics/layer_5="ladder"
+2d_physics/layer_6="ladder_detector"
 
 [physics]
 
