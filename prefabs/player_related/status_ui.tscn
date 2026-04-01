@@ -1,0 +1,23 @@
+[gd_scene format=3 uid="uid://dnxjfe4rhd5ql"]
+
+[ext_resource type="Texture2D" uid="uid://d1j5ytoma8svm" path="res://assets/player_related/player_health_empty.png" id="1_01irv"]
+[ext_resource type="Texture2D" uid="uid://cy5elip4mwjjj" path="res://assets/player_related/player_health.png" id="2_yya5u"]
+[ext_resource type="Script" path="res://prefabs/player_related/status_ui.gd" id="3_9q2vw"]
+
+[node name="StatusUI" type="CanvasLayer" unique_id=937593811]
+script = ExtResource("3_9q2vw")
+
+[node name="Health" type="TextureProgressBar" parent="." unique_id=672670715]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = -1084.0
+offset_bottom = -628.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(4, 4)
+value = 100.0
+texture_under = ExtResource("1_01irv")
+texture_progress = ExtResource("2_yya5u")

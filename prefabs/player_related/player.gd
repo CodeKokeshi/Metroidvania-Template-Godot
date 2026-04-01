@@ -93,6 +93,15 @@ extends CharacterBody2D
 @export var gun_magazine_size: int = 8
 @export var gun_reload_time: float = 1.0
 
+@export_group("Attack Pivot")
+@export var attack_pitch_pivot_y_offset: float = 16.0
+
+@export_group("Health")
+@export var level_base_max_health: int = 100
+@export var trap_contact_damage: int = 25
+@export var safe_spot_check_interval: float = 0.5
+@export var safe_spot_min_distance: float = 8.0
+
 const ACTION_LEFT: StringName = &"left"
 const ACTION_RIGHT: StringName = &"right"
 const ACTION_UP: StringName = &"up"
@@ -102,6 +111,7 @@ const ACTION_ATTACK: StringName = &"attack"
 const ACTION_ALT_ATTACK: StringName = &"alt_attack"
 const ACTION_SWITCH_WEAPON: StringName = &"switch_weapon"
 const ACTION_DASH: StringName = &"dash"
+const TRAP_COLLISION_LAYER_INDEX: int = 4
 const BULLET_SCENE: PackedScene = preload("res://prefabs/player_related/bullet.tscn")
 const SWORD_HIT_FX_SCENE: PackedScene = preload("res://prefabs/fx/sword_hit.tscn")
 const DASH_DISTORTION_SHADER: Shader = preload("res://prefabs/fx/dash_distortion.gdshader")
@@ -115,6 +125,7 @@ enum WeaponMode {
 @onready var weapon_pivot: Node2D = $"pivot"
 @onready var weapon_sprite: AnimatedSprite2D = $"pivot/weapon"
 @onready var sword_hitbox: Area2D = $"pivot/weapon/sword_hitbox"
+@onready var hurtbox: Area2D = $"animsprite2D/hurtbox"
 @onready var gun_sprite: Sprite2D = $"pivot/gun"
 @onready var gun_emission: CPUParticles2D = $"pivot/gun/emission"
 @onready var bullet_spawn_marker: Marker2D = $"pivot/gun/bullet_spawns_here"
@@ -126,8 +137,12 @@ var jump_buffer_timer: float = 0.0
 var jump_squash_timer: float = 0.0
 var land_squash_timer: float = 0.0
 var last_vertical_speed: float = 0.0
+var safe_spot_check_timer: float = 0.0
+var last_safe_position: Vector2 = Vector2.ZERO
+var has_last_safe_position: bool = false
 var base_sprite_scale: Vector2 = Vector2.ONE
 var base_anim_sprite_position: Vector2 = Vector2.ZERO
+var base_weapon_pivot_position: Vector2 = Vector2.ZERO
 var base_weapon_scale_x: float = 1.0
 var base_weapon_position_x: float = 0.0
 var base_gun_scale_x: float = 1.0
@@ -178,6 +193,7 @@ var is_sword_hit_fx_pool_initialized: bool = false
 func _ready() -> void:
 	base_sprite_scale = anim_sprite.scale
 	base_anim_sprite_position = anim_sprite.position
+	base_weapon_pivot_position = weapon_pivot.position
 	base_weapon_scale_x = absf(weapon_sprite.scale.x)
 	base_weapon_position_x = weapon_sprite.position.x
 	base_gun_scale_x = absf(gun_sprite.scale.x)
@@ -197,6 +213,10 @@ func _ready() -> void:
 	_set_sword_hitbox_active(false)
 	_update_expression_visibility()
 	remaining_air_jumps = max(0, max_air_jumps)
+	_initialize_health_state()
+	last_safe_position = global_position
+	has_last_safe_position = true
+	safe_spot_check_timer = maxf(0.0, safe_spot_check_interval)
 	call_deferred("_initialize_dash_distortion_fx")
 	call_deferred("_initialize_dash_trail_fx")
 	call_deferred("_initialize_gun_bullet_pool")
@@ -254,6 +274,10 @@ func _update_timers(delta: float, on_floor: bool) -> void:
 
 	dash_ground_to_jump_lock_timer = maxf(0.0, dash_ground_to_jump_lock_timer - delta)
 	ladder_jump_detach_timer = maxf(0.0, ladder_jump_detach_timer - delta)
+	safe_spot_check_timer = maxf(0.0, safe_spot_check_timer - delta)
+	if safe_spot_check_timer <= 0.0:
+		safe_spot_check_timer = maxf(0.0, safe_spot_check_interval)
+		_try_update_last_safe_position(on_floor)
 
 	jump_buffer_timer = maxf(0.0, jump_buffer_timer - delta)
 	jump_squash_timer = maxf(0.0, jump_squash_timer - delta)
@@ -535,6 +559,148 @@ func _create_white_pixel_texture() -> Texture2D:
 	var image: Image = Image.create(1, 1, false, Image.FORMAT_RGBA8)
 	image.fill(Color.WHITE)
 	return ImageTexture.create_from_image(image)
+
+
+func _try_update_last_safe_position(on_floor: bool) -> void:
+	if not on_floor:
+		return
+
+	if absf(velocity.y) > 0.01:
+		return
+
+	if _is_overlapping_hazards():
+		return
+
+	if has_last_safe_position and global_position.distance_to(last_safe_position) < maxf(0.0, safe_spot_min_distance):
+		return
+
+	last_safe_position = global_position
+	has_last_safe_position = true
+
+
+func _is_overlapping_hazards() -> bool:
+	if hurtbox == null:
+		return false
+
+	for body in hurtbox.get_overlapping_bodies():
+		if _is_trap_source(body):
+			return true
+
+	for area in hurtbox.get_overlapping_areas():
+		if _is_trap_source(area):
+			return true
+
+	return false
+
+
+func _is_trap_source(node: Node) -> bool:
+	if node == null:
+		return false
+
+	if node is CollisionObject2D:
+		return (node as CollisionObject2D).get_collision_layer_value(TRAP_COLLISION_LAYER_INDEX)
+
+	# Fallback for collision providers that do not expose layer APIs directly.
+	return true
+
+
+func _respawn_to_last_safe_position() -> void:
+	if has_last_safe_position:
+		global_position = last_safe_position
+
+	velocity = Vector2.ZERO
+	is_dashing = false
+	dash_timer = 0.0
+	dash_end_hang_timer = 0.0
+	pending_recoil_velocity_add = Vector2.ZERO
+	pending_recoil_min_upward_speed = 0.0
+	jump_buffer_timer = 0.0
+	coyote_timer = 0.0
+	is_on_ladder = false
+	ladder_jump_detach_timer = maxf(ladder_jump_detach_timer, ladder_jump_detach_time)
+
+
+func _get_health_manager() -> Node:
+	return get_node_or_null("/root/HealthManager")
+
+
+func _initialize_health_state() -> void:
+	var health_manager: Node = _get_health_manager()
+	if health_manager == null:
+		return
+
+	if health_manager.has_method("set_level_base_health"):
+		health_manager.call("set_level_base_health", max(0, level_base_max_health), true)
+
+
+func take_damage(amount: int) -> int:
+	var health_manager: Node = _get_health_manager()
+	if health_manager == null or not health_manager.has_method("apply_damage"):
+		return 0
+	return int(health_manager.call("apply_damage", max(0, amount)))
+
+
+func damage(amount: int) -> int:
+	return take_damage(amount)
+
+
+func heal(amount: int) -> int:
+	var health_manager: Node = _get_health_manager()
+	if health_manager == null or not health_manager.has_method("heal"):
+		return 0
+	return int(health_manager.call("heal", max(0, amount)))
+
+
+func set_current_health(value: int) -> int:
+	var health_manager: Node = _get_health_manager()
+	if health_manager == null or not health_manager.has_method("set_current_health"):
+		return 0
+	return int(health_manager.call("set_current_health", value))
+
+
+func set_max_health(value: int, refill_current: bool = false) -> int:
+	var health_manager: Node = _get_health_manager()
+	if health_manager == null or not health_manager.has_method("set_max_health"):
+		return 0
+	return int(health_manager.call("set_max_health", max(0, value), refill_current))
+
+
+func restore_full_health() -> void:
+	var health_manager: Node = _get_health_manager()
+	if health_manager != null and health_manager.has_method("restore_full_health"):
+		health_manager.call("restore_full_health")
+
+
+func get_current_health() -> int:
+	var health_manager: Node = _get_health_manager()
+	if health_manager == null or not health_manager.has_method("get_current_health"):
+		return 0
+	return int(health_manager.call("get_current_health"))
+
+
+func get_health() -> int:
+	return get_current_health()
+
+
+func get_max_health() -> int:
+	var health_manager: Node = _get_health_manager()
+	if health_manager == null or not health_manager.has_method("get_max_health"):
+		return 0
+	return int(health_manager.call("get_max_health"))
+
+
+func get_health_ratio() -> float:
+	var health_manager: Node = _get_health_manager()
+	if health_manager == null or not health_manager.has_method("get_health_ratio"):
+		return 0.0
+	return float(health_manager.call("get_health_ratio"))
+
+
+func is_dead() -> bool:
+	var health_manager: Node = _get_health_manager()
+	if health_manager == null or not health_manager.has_method("is_dead"):
+		return true
+	return bool(health_manager.call("is_dead"))
 
 
 func _refresh_ladder_contact_state() -> void:
@@ -1003,6 +1169,8 @@ func _update_attack_pitch_from_input(force: bool = false) -> void:
 
 func _apply_attack_pivot_rotation() -> void:
 	weapon_pivot.rotation_degrees = float(attack_pitch_sign * facing_sign) * 90.0
+	var pitch_offset_y: float = -float(attack_pitch_sign) * attack_pitch_pivot_y_offset
+	weapon_pivot.position = Vector2(base_weapon_pivot_position.x, base_weapon_pivot_position.y + pitch_offset_y)
 
 
 func _get_attack_direction() -> Vector2:
@@ -1103,10 +1271,16 @@ func _on_weapon_slash_animation_finished() -> void:
 
 
 func _on_hurtbox_body_entered(body: Node2D) -> void:
-	# TODO: When the damage system is implemented, reset dash availability here.
-	# Example: can_air_dash = true
-	# for now do nothing.
-	pass # Replace with function body.
+	# if what entered was from Mask (Collision Layer 4). Then it is a trap.
+	# If it is a trap immedietly spawn to the last safe point with a damage health of 25.
+	if body == null:
+		return
+
+	if not _is_trap_source(body):
+		return
+
+	take_damage(max(0, trap_contact_damage))
+	_respawn_to_last_safe_position()
 
 
 func _on_sword_hitbox_body_entered(body: Node2D) -> void:
