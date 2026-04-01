@@ -33,10 +33,10 @@
 - Gate role: pass dash barriers and avoid timed hazards.
 - Effort: S-M.
 
-4. Pogo (down-slash bounce) -> Done but no Pogo yet
-- Trigger only on enemy/trap hit from above (no free mid-air pogo). -> Not Yet
-- Pogo is consistent and simple: one bounce strength for all valid pogo contacts. -> Not Yet
-- Gate role: vertical routing without double jump. -> Not Yet
+4. Pogo (down-slash bounce) -> Done
+- Trigger only on enemy/trap hit from above (no free mid-air pogo). -> Done
+- Pogo is consistent and simple: one bounce strength for all valid pogo contacts. -> Done
+- Gate role: vertical routing without double jump. -> Done
 - Effort: S.
 
 5. Gun (floating sidearm mode) -> Done
@@ -58,7 +58,7 @@
 - Gate role: timed door traversal, hazard crossing.
 - Effort: M.
 
-3. Recoil Shot (late-game downward blast)
+3. Recoil Shot (late-game downward blast) --> Done
 - Fire gun downward in air to gain upward recoil boost.
 - This is a controlled pseudo-double-jump for late game routing.
 - Uses no new body animation; all feedback lives on weapon muzzle flash + player squash/stretch.

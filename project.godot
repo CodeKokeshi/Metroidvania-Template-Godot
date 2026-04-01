@@ -15,13 +15,13 @@ run/main_scene="uid://pi4jvw1t8cgv"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
-[global_group]
-
-pausables="Affected by Hit Pause"
-
 [autoload]
 
 HitPauseManager="*res://scripts/hit_pause_manager.gd"
+
+[global_group]
+
+pausables="Affected by Hit Pause"
 
 [input]
 
