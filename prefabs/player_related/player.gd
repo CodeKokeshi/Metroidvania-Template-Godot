@@ -11,6 +11,9 @@ extends CharacterBody2D
 @export var dash_speed: float = 220.0
 @export var dash_duration: float = 0.12
 @export var dash_release_speed_multiplier: float = 0.72
+@export var dash_end_hang_time: float = 0.08
+@export var dash_end_jump_grace_time: float = 0.12
+@export var dash_ground_to_jump_lock_time: float = 0.2
 
 @export_group("Dash Distortion FX")
 @export var dash_distortion_enabled: bool = true
@@ -130,6 +133,9 @@ var is_attacking: bool = false
 var is_dashing: bool = false
 var dash_timer: float = 0.0
 var dash_direction: Vector2 = Vector2.ZERO
+var dash_end_hang_timer: float = 0.0
+var dash_started_on_floor: bool = false
+var dash_ground_to_jump_lock_timer: float = 0.0
 var can_air_dash: bool = true
 var dash_distortion_sprite: Sprite2D = null
 var dash_distortion_material: ShaderMaterial = null
@@ -228,8 +234,12 @@ func _update_timers(delta: float, on_floor: bool) -> void:
 		coyote_timer = coyote_time
 		remaining_air_jumps = max(0, max_air_jumps)
 		can_air_dash = true
+		dash_end_hang_timer = 0.0
 	else:
 		coyote_timer = maxf(0.0, coyote_timer - delta)
+		dash_end_hang_timer = maxf(0.0, dash_end_hang_timer - delta)
+
+	dash_ground_to_jump_lock_timer = maxf(0.0, dash_ground_to_jump_lock_timer - delta)
 
 	jump_buffer_timer = maxf(0.0, jump_buffer_timer - delta)
 	jump_squash_timer = maxf(0.0, jump_squash_timer - delta)
@@ -268,12 +278,15 @@ func _start_dash(requested_direction: Vector2, on_floor: bool) -> void:
 	is_dashing = true
 	dash_timer = maxf(0.0, dash_duration)
 	dash_direction = requested_direction.normalized()
+	dash_end_hang_timer = 0.0
+	dash_started_on_floor = on_floor
 	jump_buffer_timer = 0.0
-	coyote_timer = 0.0
 	pending_recoil_velocity_add = Vector2.ZERO
 	pending_recoil_min_upward_speed = 0.0
 
-	if not on_floor:
+	if on_floor:
+		dash_ground_to_jump_lock_timer = maxf(dash_ground_to_jump_lock_timer, maxf(0.0, dash_ground_to_jump_lock_time))
+	else:
 		can_air_dash = false
 
 	if dash_direction.x < 0.0:
@@ -308,8 +321,16 @@ func _finish_dash() -> void:
 	is_dashing = false
 	dash_timer = 0.0
 	velocity *= clampf(dash_release_speed_multiplier, 0.0, 1.0)
+	if not is_on_floor() and dash_end_hang_time > 0.0:
+		dash_end_hang_timer = dash_end_hang_time
+		velocity.y = minf(velocity.y, 0.0)
+	if dash_started_on_floor and not is_on_floor() and dash_end_jump_grace_time > 0.0:
+		coyote_timer = maxf(coyote_timer, dash_end_jump_grace_time)
 	pending_recoil_velocity_add = Vector2.ZERO
 	pending_recoil_min_upward_speed = 0.0
+	if is_on_floor() or dash_started_on_floor:
+		_consume_buffered_jump_if_possible(is_on_floor())
+	dash_started_on_floor = false
 
 
 func _get_dash_direction() -> Vector2:
@@ -520,6 +541,10 @@ func _start_jump() -> void:
 	coyote_timer = 0.0
 	jump_buffer_timer = 0.0
 	jump_squash_timer = jump_squash_time
+	if dash_ground_to_jump_lock_timer > 0.0:
+		# Ground dash chained into jump consumes this airtime dash.
+		can_air_dash = false
+		dash_ground_to_jump_lock_timer = 0.0
 
 
 func _apply_horizontal_movement(input_axis: float, delta: float, on_floor: bool) -> void:
@@ -536,6 +561,11 @@ func _apply_horizontal_movement(input_axis: float, delta: float, on_floor: bool)
 func _apply_gravity(delta: float, on_floor: bool) -> void:
 	if on_floor and velocity.y > 0.0:
 		velocity.y = 0.0
+		return
+
+	# Briefly suspend downward pull after dash so aerial dash exits feel less abrupt.
+	if not on_floor and dash_end_hang_timer > 0.0:
+		velocity.y = minf(velocity.y, 0.0)
 		return
 
 	if not on_floor:
