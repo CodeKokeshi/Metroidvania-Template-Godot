@@ -10,6 +10,26 @@ extends CharacterBody2D
 @export_group("Dash")
 @export var dash_speed: float = 220.0
 @export var dash_duration: float = 0.12
+@export var dash_release_speed_multiplier: float = 0.72
+
+@export_group("Dash Distortion FX")
+@export var dash_distortion_enabled: bool = true
+@export var dash_distortion_size: Vector2 = Vector2(96.0, 34.0)
+@export var dash_distortion_follow_offset: float = 18.0
+@export var dash_distortion_strength: float = 0.035
+@export var dash_distortion_fade_speed: float = 8.0
+@export var dash_distortion_noise_scale: float = 20.0
+@export var dash_distortion_tail_stretch: float = 0.7
+@export var dash_distortion_z_index: int = 24
+
+@export_group("Dash Trail FX")
+@export var dash_trail_enabled: bool = true
+@export var dash_trail_width: float = 7.0
+@export var dash_trail_max_points: int = 12
+@export var dash_trail_min_point_distance: float = 3.0
+@export var dash_trail_fade_points_per_second: float = 70.0
+@export var dash_trail_color: Color = Color(0.63, 0.9, 1.0, 0.52)
+@export var dash_trail_z_index: int = 12
 
 @export_group("Jump Feel")
 @export var jump_velocity: float = -340.0
@@ -76,6 +96,7 @@ const ACTION_SWITCH_WEAPON: StringName = &"switch_weapon"
 const ACTION_DASH: StringName = &"dash"
 const BULLET_SCENE: PackedScene = preload("res://prefabs/player_related/bullet.tscn")
 const SWORD_HIT_FX_SCENE: PackedScene = preload("res://prefabs/fx/sword_hit.tscn")
+const DASH_DISTORTION_SHADER: Shader = preload("res://prefabs/fx/dash_distortion.gdshader")
 
 enum WeaponMode {
 	SWORD,
@@ -110,6 +131,13 @@ var is_dashing: bool = false
 var dash_timer: float = 0.0
 var dash_direction: Vector2 = Vector2.ZERO
 var can_air_dash: bool = true
+var dash_distortion_sprite: Sprite2D = null
+var dash_distortion_material: ShaderMaterial = null
+var dash_distortion_energy: float = 0.0
+var dash_distortion_time: float = 0.0
+var dash_trail_line: Line2D = null
+var dash_trail_points: Array[Vector2] = []
+var dash_trail_fade_accumulator: float = 0.0
 var facing_sign: int = 1
 var queued_facing_sign: int = 1
 var current_weapon_mode: WeaponMode = WeaponMode.SWORD
@@ -155,6 +183,8 @@ func _ready() -> void:
 	_set_sword_hitbox_active(false)
 	_update_expression_visibility()
 	remaining_air_jumps = max(0, max_air_jumps)
+	call_deferred("_initialize_dash_distortion_fx")
+	call_deferred("_initialize_dash_trail_fx")
 	call_deferred("_initialize_gun_bullet_pool")
 	call_deferred("_initialize_sword_hit_fx_pool")
 
@@ -189,6 +219,8 @@ func _physics_process(delta: float) -> void:
 	_handle_landing_squash(was_on_floor)
 	_update_animation()
 	_update_squash(delta)
+	_update_dash_distortion_fx(delta)
+	_update_dash_trail_fx(delta)
 
 
 func _update_timers(delta: float, on_floor: bool) -> void:
@@ -268,12 +300,14 @@ func _process_dash_movement(delta: float, was_on_floor: bool) -> void:
 	_handle_landing_squash(was_on_floor)
 	_update_animation()
 	_update_squash(delta)
+	_update_dash_distortion_fx(delta)
+	_update_dash_trail_fx(delta)
 
 
 func _finish_dash() -> void:
 	is_dashing = false
 	dash_timer = 0.0
-	velocity = Vector2.ZERO
+	velocity *= clampf(dash_release_speed_multiplier, 0.0, 1.0)
 	pending_recoil_velocity_add = Vector2.ZERO
 	pending_recoil_min_upward_speed = 0.0
 
@@ -295,6 +329,177 @@ func _get_dash_direction() -> Vector2:
 		vertical_sign = 1
 
 	return Vector2(float(horizontal_sign), float(vertical_sign)).normalized()
+
+
+func _initialize_dash_distortion_fx() -> void:
+	dash_distortion_energy = 0.0
+	dash_distortion_time = 0.0
+
+	if dash_distortion_sprite != null:
+		dash_distortion_sprite.queue_free()
+		dash_distortion_sprite = null
+		dash_distortion_material = null
+
+	if not dash_distortion_enabled:
+		return
+
+	dash_distortion_sprite = Sprite2D.new()
+	dash_distortion_sprite.name = "dash_distortion"
+	dash_distortion_sprite.texture = _create_white_pixel_texture()
+	dash_distortion_sprite.centered = true
+	dash_distortion_sprite.z_as_relative = false
+	dash_distortion_sprite.z_index = dash_distortion_z_index
+	dash_distortion_sprite.visible = false
+
+	dash_distortion_material = ShaderMaterial.new()
+	dash_distortion_material.shader = DASH_DISTORTION_SHADER
+	dash_distortion_material.set_shader_parameter("strength", dash_distortion_strength)
+	dash_distortion_material.set_shader_parameter("noise_scale", dash_distortion_noise_scale)
+	dash_distortion_material.set_shader_parameter("tail_stretch", dash_distortion_tail_stretch)
+	dash_distortion_material.set_shader_parameter("flow_dir", Vector2.RIGHT)
+	dash_distortion_material.set_shader_parameter("energy", 0.0)
+	dash_distortion_material.set_shader_parameter("time_offset", 0.0)
+	dash_distortion_sprite.material = dash_distortion_material
+
+	add_child(dash_distortion_sprite)
+
+	if not dash_distortion_sprite.is_in_group("pausables"):
+		dash_distortion_sprite.add_to_group("pausables")
+
+
+func _update_dash_distortion_fx(delta: float) -> void:
+	if dash_distortion_sprite == null or dash_distortion_material == null:
+		return
+
+	if not dash_distortion_enabled:
+		dash_distortion_energy = 0.0
+		dash_distortion_sprite.visible = false
+		dash_distortion_material.set_shader_parameter("energy", 0.0)
+		return
+
+	if is_dashing:
+		dash_distortion_energy = 1.0
+	else:
+		dash_distortion_energy = move_toward(dash_distortion_energy, 0.0, maxf(0.1, dash_distortion_fade_speed) * delta)
+
+	if dash_distortion_energy <= 0.001:
+		dash_distortion_sprite.visible = false
+		dash_distortion_material.set_shader_parameter("energy", 0.0)
+		return
+
+	var flow_direction: Vector2 = dash_direction
+	if flow_direction == Vector2.ZERO:
+		flow_direction = Vector2(float(facing_sign), 0.0)
+	flow_direction = flow_direction.normalized()
+
+	dash_distortion_time += delta
+	dash_distortion_sprite.visible = true
+	dash_distortion_sprite.rotation = flow_direction.angle()
+	dash_distortion_sprite.global_position = anim_sprite.global_position - (flow_direction * dash_distortion_follow_offset)
+	dash_distortion_sprite.scale = Vector2(
+		dash_distortion_size.x * (1.0 + (dash_distortion_tail_stretch * dash_distortion_energy)),
+		dash_distortion_size.y
+	)
+
+	dash_distortion_material.set_shader_parameter("strength", dash_distortion_strength)
+	dash_distortion_material.set_shader_parameter("noise_scale", dash_distortion_noise_scale)
+	dash_distortion_material.set_shader_parameter("tail_stretch", dash_distortion_tail_stretch)
+	dash_distortion_material.set_shader_parameter("flow_dir", flow_direction)
+	dash_distortion_material.set_shader_parameter("energy", dash_distortion_energy)
+	dash_distortion_material.set_shader_parameter("time_offset", dash_distortion_time)
+
+
+func _initialize_dash_trail_fx() -> void:
+	dash_trail_points.clear()
+	dash_trail_fade_accumulator = 0.0
+
+	if dash_trail_line != null:
+		dash_trail_line.queue_free()
+		dash_trail_line = null
+
+	if not dash_trail_enabled:
+		return
+
+	dash_trail_line = Line2D.new()
+	dash_trail_line.name = "dash_trail"
+	dash_trail_line.top_level = true
+	dash_trail_line.width = dash_trail_width
+	dash_trail_line.default_color = dash_trail_color
+	dash_trail_line.texture_mode = Line2D.LINE_TEXTURE_NONE
+	dash_trail_line.joint_mode = Line2D.LINE_JOINT_ROUND
+	dash_trail_line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	dash_trail_line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	dash_trail_line.antialiased = true
+	dash_trail_line.z_as_relative = false
+	dash_trail_line.z_index = dash_trail_z_index
+	dash_trail_line.visible = false
+
+	var gradient: Gradient = Gradient.new()
+	gradient.offsets = PackedFloat32Array([0.0, 1.0])
+	var tail_color: Color = dash_trail_color
+	tail_color.a = 0.0
+	gradient.colors = PackedColorArray([dash_trail_color, tail_color])
+	dash_trail_line.gradient = gradient
+
+	add_child(dash_trail_line)
+	dash_trail_line.global_position = Vector2.ZERO
+
+	if not dash_trail_line.is_in_group("pausables"):
+		dash_trail_line.add_to_group("pausables")
+
+
+func _update_dash_trail_fx(delta: float) -> void:
+	if dash_trail_line == null:
+		return
+
+	if not dash_trail_enabled:
+		dash_trail_points.clear()
+		dash_trail_line.clear_points()
+		dash_trail_line.visible = false
+		return
+
+	if is_dashing:
+		_push_dash_trail_point(anim_sprite.global_position)
+		dash_trail_fade_accumulator = 0.0
+	else:
+		_fade_dash_trail_points(delta)
+
+	if dash_trail_points.is_empty():
+		dash_trail_line.clear_points()
+		dash_trail_line.visible = false
+		return
+
+	dash_trail_line.points = PackedVector2Array(dash_trail_points)
+	dash_trail_line.visible = dash_trail_points.size() > 1
+
+
+func _push_dash_trail_point(world_position: Vector2) -> void:
+	if dash_trail_points.is_empty():
+		dash_trail_points.push_front(world_position)
+		return
+
+	if dash_trail_points[0].distance_to(world_position) < maxf(0.1, dash_trail_min_point_distance):
+		return
+
+	dash_trail_points.push_front(world_position)
+	while dash_trail_points.size() > max(2, dash_trail_max_points):
+		dash_trail_points.pop_back()
+
+
+func _fade_dash_trail_points(delta: float) -> void:
+	if dash_trail_points.is_empty():
+		return
+
+	dash_trail_fade_accumulator += delta * maxf(1.0, dash_trail_fade_points_per_second)
+	while dash_trail_fade_accumulator >= 1.0 and not dash_trail_points.is_empty():
+		dash_trail_points.pop_back()
+		dash_trail_fade_accumulator -= 1.0
+
+
+func _create_white_pixel_texture() -> Texture2D:
+	var image: Image = Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	image.fill(Color.WHITE)
+	return ImageTexture.create_from_image(image)
 
 
 func _consume_buffered_jump_if_possible(on_floor: bool) -> void:
@@ -776,6 +981,8 @@ func _on_weapon_slash_animation_finished() -> void:
 
 
 func _on_hurtbox_body_entered(body: Node2D) -> void:
+	# TODO: When the damage system is implemented, reset dash availability here.
+	# Example: can_air_dash = true
 	# for now do nothing.
 	pass # Replace with function body.
 
@@ -814,6 +1021,8 @@ func _on_sword_hitbox_body_entered(body: Node2D) -> void:
 
 	pending_recoil_min_upward_speed = maxf(pending_recoil_min_upward_speed, absf(sword_pogo_bounce_speed))
 	sword_pogo_consumed_this_attack = true
+	# Pogo grants one more air dash even if it was already consumed this jump.
+	can_air_dash = true
 	coyote_timer = 0.0
 	jump_buffer_timer = 0.0
 	remaining_air_jumps = max(remaining_air_jumps, max(0, max_air_jumps))
