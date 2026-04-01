@@ -7,6 +7,10 @@ extends CharacterBody2D
 @export var air_acceleration: float = 900.0
 @export var air_deceleration: float = 700.0
 
+@export_group("Dash")
+@export var dash_speed: float = 220.0
+@export var dash_duration: float = 0.12
+
 @export_group("Jump Feel")
 @export var jump_velocity: float = -340.0
 @export var coyote_time: float = 0.12
@@ -69,6 +73,7 @@ const ACTION_DOWN: StringName = &"down"
 const ACTION_JUMP: StringName = &"jump"
 const ACTION_ATTACK: StringName = &"attack"
 const ACTION_SWITCH_WEAPON: StringName = &"switch_weapon"
+const ACTION_DASH: StringName = &"dash"
 const BULLET_SCENE: PackedScene = preload("res://prefabs/player_related/bullet.tscn")
 const SWORD_HIT_FX_SCENE: PackedScene = preload("res://prefabs/fx/sword_hit.tscn")
 
@@ -101,6 +106,10 @@ var base_gun_scale_y: float = 1.0
 var base_gun_position_y: float = 0.0
 var base_gun_rotation_degrees: float = 0.0
 var is_attacking: bool = false
+var is_dashing: bool = false
+var dash_timer: float = 0.0
+var dash_direction: Vector2 = Vector2.ZERO
+var can_air_dash: bool = true
 var facing_sign: int = 1
 var queued_facing_sign: int = 1
 var current_weapon_mode: WeaponMode = WeaponMode.SWORD
@@ -156,12 +165,18 @@ func _physics_process(delta: float) -> void:
 
 	_update_timers(delta, was_on_floor)
 	_buffer_jump_input()
+	_try_start_dash(was_on_floor)
+	_apply_gun_feedback_visuals()
+	_apply_player_gun_recoil_visuals()
+
+	if is_dashing:
+		_process_dash_movement(delta, was_on_floor)
+		return
+
 	_try_switch_weapon()
 	_update_facing(horizontal_input)
 	_update_attack_pitch_from_input()
 	_try_start_attack()
-	_apply_gun_feedback_visuals()
-	_apply_player_gun_recoil_visuals()
 	_apply_horizontal_movement(horizontal_input, delta, was_on_floor)
 	_apply_gravity(delta, was_on_floor)
 	_consume_buffered_jump_if_possible(was_on_floor)
@@ -180,6 +195,7 @@ func _update_timers(delta: float, on_floor: bool) -> void:
 	if on_floor:
 		coyote_timer = coyote_time
 		remaining_air_jumps = max(0, max_air_jumps)
+		can_air_dash = true
 	else:
 		coyote_timer = maxf(0.0, coyote_timer - delta)
 
@@ -197,6 +213,88 @@ func _update_timers(delta: float, on_floor: bool) -> void:
 func _buffer_jump_input() -> void:
 	if Input.is_action_just_pressed(ACTION_JUMP):
 		jump_buffer_timer = jump_buffer_time
+
+
+func _try_start_dash(on_floor: bool) -> void:
+	if not Input.is_action_just_pressed(ACTION_DASH):
+		return
+
+	if is_dashing or is_attacking:
+		return
+
+	if not on_floor and not can_air_dash:
+		return
+
+	var requested_direction: Vector2 = _get_dash_direction()
+	if requested_direction == Vector2.ZERO:
+		return
+
+	_start_dash(requested_direction, on_floor)
+
+
+func _start_dash(requested_direction: Vector2, on_floor: bool) -> void:
+	is_dashing = true
+	dash_timer = maxf(0.0, dash_duration)
+	dash_direction = requested_direction.normalized()
+	jump_buffer_timer = 0.0
+	coyote_timer = 0.0
+	pending_recoil_velocity_add = Vector2.ZERO
+	pending_recoil_min_upward_speed = 0.0
+
+	if not on_floor:
+		can_air_dash = false
+
+	if dash_direction.x < 0.0:
+		queued_facing_sign = -1
+	elif dash_direction.x > 0.0:
+		queued_facing_sign = 1
+
+	if facing_sign != queued_facing_sign:
+		facing_sign = queued_facing_sign
+		_apply_facing()
+
+	velocity = dash_direction * dash_speed
+
+
+func _process_dash_movement(delta: float, was_on_floor: bool) -> void:
+	dash_timer = maxf(0.0, dash_timer - delta)
+	velocity = dash_direction * dash_speed
+	last_vertical_speed = velocity.y
+	move_and_slide()
+
+	if dash_timer <= 0.0:
+		_finish_dash()
+
+	_handle_landing_squash(was_on_floor)
+	_update_animation()
+	_update_squash(delta)
+
+
+func _finish_dash() -> void:
+	is_dashing = false
+	dash_timer = 0.0
+	velocity = Vector2.ZERO
+	pending_recoil_velocity_add = Vector2.ZERO
+	pending_recoil_min_upward_speed = 0.0
+
+
+func _get_dash_direction() -> Vector2:
+	var horizontal_sign: int = facing_sign
+	var horizontal_axis: float = Input.get_axis(ACTION_LEFT, ACTION_RIGHT)
+	if horizontal_axis < 0.0:
+		horizontal_sign = -1
+	elif horizontal_axis > 0.0:
+		horizontal_sign = 1
+
+	var vertical_sign: int = 0
+	var up_pressed: bool = Input.is_action_pressed(ACTION_UP)
+	var down_pressed: bool = Input.is_action_pressed(ACTION_DOWN)
+	if up_pressed and not down_pressed:
+		vertical_sign = -1
+	elif down_pressed and not up_pressed:
+		vertical_sign = 1
+
+	return Vector2(float(horizontal_sign), float(vertical_sign)).normalized()
 
 
 func _consume_buffered_jump_if_possible(on_floor: bool) -> void:

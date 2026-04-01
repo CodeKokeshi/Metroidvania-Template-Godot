@@ -376,6 +376,7 @@ tile_set = SubResource("TileSet_gmgay")
 
 [node name="player" parent="." unique_id=1959709043 instance=ExtResource("2_x25rp")]
 position = Vector2(257, 419)
+dash_duration = 0.3
 
 [node name="Camera2D" type="Camera2D" parent="player" unique_id=1386317524]
 position = Vector2(0, -24)
