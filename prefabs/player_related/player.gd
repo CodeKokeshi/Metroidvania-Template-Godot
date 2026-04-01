@@ -15,6 +15,10 @@ extends CharacterBody2D
 @export var dash_end_jump_grace_time: float = 0.12
 @export var dash_ground_to_jump_lock_time: float = 0.2
 
+@export_group("Ladder")
+@export var ladder_climb_speed: float = 95.0
+@export var ladder_jump_detach_time: float = 0.14
+
 @export_group("Dash Distortion FX")
 @export var dash_distortion_enabled: bool = true
 @export var dash_distortion_size: Vector2 = Vector2(96.0, 34.0)
@@ -114,6 +118,7 @@ enum WeaponMode {
 @onready var gun_emission: CPUParticles2D = $"pivot/gun/emission"
 @onready var bullet_spawn_marker: Marker2D = $"pivot/gun/bullet_spawns_here"
 @onready var expression_sprite: Sprite2D = $"pivot/gun/expression"
+@onready var ladder_detector: Area2D = $"animsprite2D/ladder_detector"
 
 var coyote_timer: float = 0.0
 var jump_buffer_timer: float = 0.0
@@ -137,6 +142,8 @@ var dash_end_hang_timer: float = 0.0
 var dash_started_on_floor: bool = false
 var dash_ground_to_jump_lock_timer: float = 0.0
 var can_air_dash: bool = true
+var is_on_ladder: bool = false
+var ladder_jump_detach_timer: float = 0.0
 var dash_distortion_sprite: Sprite2D = null
 var dash_distortion_material: ShaderMaterial = null
 var dash_distortion_energy: float = 0.0
@@ -201,6 +208,7 @@ func _physics_process(delta: float) -> void:
 
 	_update_timers(delta, was_on_floor)
 	_buffer_jump_input()
+	_refresh_ladder_contact_state()
 	_try_start_dash(was_on_floor)
 	_apply_gun_feedback_visuals()
 	_apply_player_gun_recoil_visuals()
@@ -213,6 +221,9 @@ func _physics_process(delta: float) -> void:
 	_update_facing(horizontal_input)
 	_update_attack_pitch_from_input()
 	_try_start_attack()
+	if is_on_ladder:
+		_process_ladder_movement(horizontal_input, delta, was_on_floor)
+		return
 	_apply_horizontal_movement(horizontal_input, delta, was_on_floor)
 	_apply_gravity(delta, was_on_floor)
 	_consume_buffered_jump_if_possible(was_on_floor)
@@ -240,6 +251,7 @@ func _update_timers(delta: float, on_floor: bool) -> void:
 		dash_end_hang_timer = maxf(0.0, dash_end_hang_timer - delta)
 
 	dash_ground_to_jump_lock_timer = maxf(0.0, dash_ground_to_jump_lock_timer - delta)
+	ladder_jump_detach_timer = maxf(0.0, ladder_jump_detach_timer - delta)
 
 	jump_buffer_timer = maxf(0.0, jump_buffer_timer - delta)
 	jump_squash_timer = maxf(0.0, jump_squash_timer - delta)
@@ -521,6 +533,52 @@ func _create_white_pixel_texture() -> Texture2D:
 	var image: Image = Image.create(1, 1, false, Image.FORMAT_RGBA8)
 	image.fill(Color.WHITE)
 	return ImageTexture.create_from_image(image)
+
+
+func _refresh_ladder_contact_state() -> void:
+	if ladder_detector == null:
+		is_on_ladder = false
+		return
+
+	if ladder_jump_detach_timer > 0.0:
+		is_on_ladder = false
+		return
+
+	is_on_ladder = ladder_detector.has_overlapping_bodies()
+	if is_on_ladder:
+		# Ladder contact refreshes dash availability even if player does not fully exit ladder volume.
+		can_air_dash = true
+
+
+func _process_ladder_movement(horizontal_input: float, delta: float, was_on_floor: bool) -> void:
+	if Input.is_action_just_pressed(ACTION_JUMP):
+		is_on_ladder = false
+		ladder_jump_detach_timer = maxf(0.0, ladder_jump_detach_time)
+		_start_jump()
+		last_vertical_speed = velocity.y
+		move_and_slide()
+		_handle_landing_squash(was_on_floor)
+		_update_animation()
+		_update_squash(delta)
+		_update_dash_distortion_fx(delta)
+		_update_dash_trail_fx(delta)
+		return
+
+	var vertical_input: float = Input.get_axis(ACTION_UP, ACTION_DOWN)
+	_apply_horizontal_movement(horizontal_input, delta, true)
+	velocity.y = vertical_input * ladder_climb_speed
+	dash_end_hang_timer = 0.0
+	pending_recoil_velocity_add = Vector2.ZERO
+	pending_recoil_min_upward_speed = 0.0
+
+	last_vertical_speed = velocity.y
+	move_and_slide()
+
+	_handle_landing_squash(was_on_floor)
+	_update_animation()
+	_update_squash(delta)
+	_update_dash_distortion_fx(delta)
+	_update_dash_trail_fx(delta)
 
 
 func _consume_buffered_jump_if_possible(on_floor: bool) -> void:
@@ -899,6 +957,11 @@ func _update_attack_pitch_from_input(force: bool = false) -> void:
 	if is_attacking and not force:
 		return
 
+	if is_on_ladder:
+		attack_pitch_sign = 0
+		_apply_attack_pivot_rotation()
+		return
+
 	if Input.is_action_pressed(ACTION_UP):
 		attack_pitch_sign = -1
 	elif Input.is_action_pressed(ACTION_DOWN):
@@ -1061,5 +1124,8 @@ func _on_sword_hitbox_body_entered(body: Node2D) -> void:
 
 
 func _on_ladder_detector_body_entered(body: Node2D) -> void:
-	# collission mask is already set up to detect ladder's body.
-	pass # Replace with function body.
+	if body == null:
+		return
+
+	# Collision mask is set to ladder physics bodies only.
+	is_on_ladder = true
