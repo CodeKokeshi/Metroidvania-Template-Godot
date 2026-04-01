@@ -1,0 +1,26 @@
+[gd_scene format=3 uid="uid://jrp5kjhobc1a"]
+
+[ext_resource type="Texture2D" uid="uid://dsevlb52csdpl" path="res://assets/player_related/portal.png" id="1_ppy1f"]
+
+[sub_resource type="Gradient" id="Gradient_yehid"]
+offsets = PackedFloat32Array(0, 0.33743843, 1)
+colors = PackedColorArray(0.35686275, 0.43137255, 0.88235295, 1, 0.6663835, 0.72961396, 0.9674638, 1, 0.35686275, 0.43137255, 0.88235295, 0)
+
+[node name="portal_blue" type="Sprite2D" unique_id=509059619]
+texture = ExtResource("1_ppy1f")
+offset = Vector2(-10, 0)
+region_enabled = true
+region_rect = Rect2(24, 0, 24, 24)
+
+[node name="portal_fx" type="CPUParticles2D" parent="." unique_id=1873832316]
+lifetime = 0.09
+speed_scale = 0.1
+emission_shape = 4
+emission_points = PackedVector2Array(0, -4, 0, 4, 0, 8, 0, -8)
+emission_colors = PackedColorArray()
+direction = Vector2(-20, 0)
+spread = 0.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 99.21
+initial_velocity_max = 134.92
+color_ramp = SubResource("Gradient_yehid")

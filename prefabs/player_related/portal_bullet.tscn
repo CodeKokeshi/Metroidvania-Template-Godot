@@ -1,0 +1,66 @@
+[gd_scene format=3 uid="uid://uv62vtih6sk7"]
+
+[ext_resource type="Texture2D" uid="uid://dsevlb52csdpl" path="res://assets/player_related/portal.png" id="1_5tqsv"]
+[ext_resource type="PackedScene" uid="uid://cjg182ux28080" path="res://prefabs/fx/smoke_emission.tscn" id="3_kkaa7"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ircnw"]
+atlas = ExtResource("1_5tqsv")
+region = Rect2(48, 0, 24, 24)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_nh1pl"]
+atlas = ExtResource("1_5tqsv")
+region = Rect2(72, 0, 24, 24)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_kkaa7"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_ircnw")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_nh1pl")
+}],
+"loop": true,
+"name": &"default",
+"speed": 5.0
+}]
+
+[sub_resource type="Curve" id="Curve_5tqsv"]
+_limits = [1.0, 3.0, 0.0, 1.0]
+_data = [Vector2(0, 3), 0.0, 0.0, 0, 0, Vector2(0.27966103, 1.0985239), 0.0, 0.0, 0, 0, Vector2(0.39830512, 2.5715759), 13.691731, 13.691731, 0, 0, Vector2(0.66525424, 1.5537246), 0.0, 0.0, 0, 0, Vector2(0.88983047, 2.8393412), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 6
+
+[sub_resource type="Gradient" id="Gradient_ircnw"]
+colors = PackedColorArray(0.35686275, 0.43137255, 0.88235295, 1, 0.6745098, 0.19607843, 0.19607843, 1)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_gvg8m"]
+size = Vector2(4, 4)
+
+[sub_resource type="Curve" id="Curve_gvg8m"]
+_limits = [0.0, 2.0, 0.0, 1.0]
+_data = [Vector2(0, 2), 0.0, 0.0, 0, 0, Vector2(1, 0.9467902), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[node name="portal_bullet" type="CharacterBody2D" unique_id=1654886895]
+
+[node name="sprite" type="AnimatedSprite2D" parent="." unique_id=2078426350]
+sprite_frames = SubResource("SpriteFrames_kkaa7")
+autoplay = "default"
+frame_progress = 0.46683022
+
+[node name="sparky_portal_bullet_fx" type="CPUParticles2D" parent="sprite" unique_id=539750961]
+lifetime = 0.25
+randomness = 0.92
+direction = Vector2(0, 0)
+spread = 180.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 83.33
+initial_velocity_max = 83.33
+scale_amount_curve = SubResource("Curve_5tqsv")
+color_ramp = SubResource("Gradient_ircnw")
+
+[node name="bodyshape" type="CollisionShape2D" parent="." unique_id=288479218]
+shape = SubResource("RectangleShape2D_gvg8m")
+
+[node name="emission" parent="." unique_id=1948023196 instance=ExtResource("3_kkaa7")]
+scale_amount_curve = SubResource("Curve_gvg8m")

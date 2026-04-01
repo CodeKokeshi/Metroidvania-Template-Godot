@@ -60,9 +60,8 @@ size = Vector2(12, 18)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_cqeii"]
 size = Vector2(6, 18)
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_63xfj"]
-radius = 6.0
-height = 17.0
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_l3fdq"]
+size = Vector2(12, 17)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_i8o8o"]
 atlas = ExtResource("3_qvnjy")
@@ -127,7 +126,7 @@ debug_color = Color(0.9824943, 0, 0.36588606, 0.41960785)
 
 [node name="physics-bodyshape" type="CollisionShape2D" parent="." unique_id=702537102]
 position = Vector2(0, 2.5)
-shape = SubResource("CapsuleShape2D_63xfj")
+shape = SubResource("RectangleShape2D_l3fdq")
 
 [node name="pivot" type="Node2D" parent="." unique_id=1326265722]
 

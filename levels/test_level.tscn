@@ -2,6 +2,8 @@
 
 [ext_resource type="Texture2D" uid="uid://dqbaffkcbtex1" path="res://assets/default-tiles.png" id="1_46lwt"]
 [ext_resource type="PackedScene" uid="uid://dka1g1adfd4v8" path="res://prefabs/player_related/player.tscn" id="2_x25rp"]
+[ext_resource type="Texture2D" uid="uid://d1j5ytoma8svm" path="res://assets/player_related/player_health_empty.png" id="3_w7r7j"]
+[ext_resource type="Texture2D" uid="uid://cy5elip4mwjjj" path="res://assets/player_related/player_health.png" id="4_o6mel"]
 
 [sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_x25rp"]
 texture = ExtResource("1_46lwt")
@@ -387,3 +389,20 @@ position = Vector2(0, -24)
 zoom = Vector2(3, 3)
 position_smoothing_enabled = true
 rotation_smoothing_enabled = true
+
+[node name="UI" type="CanvasLayer" parent="." unique_id=397646789]
+
+[node name="ProgressBar" type="TextureProgressBar" parent="UI" unique_id=1028637014]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = -1084.0
+offset_bottom = -628.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(4, 4)
+value = 100.0
+texture_under = ExtResource("3_w7r7j")
+texture_progress = ExtResource("4_o6mel")

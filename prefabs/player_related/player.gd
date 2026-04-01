@@ -99,6 +99,7 @@ const ACTION_UP: StringName = &"up"
 const ACTION_DOWN: StringName = &"down"
 const ACTION_JUMP: StringName = &"jump"
 const ACTION_ATTACK: StringName = &"attack"
+const ACTION_ALT_ATTACK: StringName = &"alt_attack"
 const ACTION_SWITCH_WEAPON: StringName = &"switch_weapon"
 const ACTION_DASH: StringName = &"dash"
 const BULLET_SCENE: PackedScene = preload("res://prefabs/player_related/bullet.tscn")
@@ -221,6 +222,7 @@ func _physics_process(delta: float) -> void:
 	_update_facing(horizontal_input)
 	_update_attack_pitch_from_input()
 	_try_start_attack()
+	_try_start_alt_attack()
 	if is_on_ladder:
 		_process_ladder_movement(horizontal_input, delta, was_on_floor)
 		return
@@ -694,6 +696,33 @@ func _try_start_attack() -> void:
 		return
 
 	_update_attack_pitch_from_input(true)
+
+	if current_weapon_mode == WeaponMode.GUN:
+		_try_fire_gun()
+		return
+
+	if is_attacking:
+		return
+
+	is_attacking = true
+	sword_pogo_consumed_this_attack = false
+	sword_hit_pause_consumed_this_attack = false
+	_set_sword_hitbox_active(true)
+	weapon_sprite.frame = 0
+	weapon_sprite.frame_progress = 0.0
+	weapon_sprite.play(&"slash")
+
+
+func _try_start_alt_attack() -> void:
+	if not Input.is_action_just_pressed(ACTION_ALT_ATTACK):
+		return
+
+	if is_on_ladder:
+		return
+
+	# Alt attack is a shortcut for downward slash/down-shot.
+	attack_pitch_sign = 1
+	_apply_attack_pivot_rotation()
 
 	if current_weapon_mode == WeaponMode.GUN:
 		_try_fire_gun()
