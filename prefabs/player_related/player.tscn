@@ -161,6 +161,7 @@ size = Vector2(34, 10)
 
 [node name="player" type="CharacterBody2D" unique_id=1959709043 groups=["pausables"]]
 collision_layer = 64
+collision_mask = 257
 script = ExtResource("2_player")
 sword_pogo_target_below_margin = 0.0
 
