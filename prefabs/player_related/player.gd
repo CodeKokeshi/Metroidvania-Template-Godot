@@ -1420,46 +1420,7 @@ func _on_hurtbox_body_entered(body: Node2D) -> void:
 
 
 func _on_sword_hitbox_body_entered(body: Node2D) -> void:
-	if body == null:
-		if sword_pogo_debug_logs:
-			print("[Pogo] Ignored: null body")
-		return
-
-	if not is_attacking:
-		if sword_pogo_debug_logs:
-			print("[Pogo] Ignored: not attacking")
-		return
-
-	_play_sword_hit_fx(sword_hitbox.global_position)
-	if not sword_hit_pause_consumed_this_attack:
-		_request_hit_pause()
-		sword_hit_pause_consumed_this_attack = true
-
-	if sword_pogo_consumed_this_attack:
-		if sword_pogo_debug_logs:
-			print("[Pogo] Ignored: already consumed this slash")
-		return
-
-	if attack_pitch_sign <= 0:
-		if sword_pogo_debug_logs:
-			print("[Pogo] Ignored: slash is not downward")
-		return
-
-	# TileMap body origins are often scene-origin based, so use hitbox position for below-player validation.
-	if sword_hitbox.global_position.y <= (global_position.y + sword_pogo_target_below_margin):
-		if sword_pogo_debug_logs:
-			print("[Pogo] Ignored: sword hitbox is not below player enough")
-		return
-
-	pending_recoil_min_upward_speed = maxf(pending_recoil_min_upward_speed, absf(sword_pogo_bounce_speed))
-	sword_pogo_consumed_this_attack = true
-	# Pogo grants one more air dash even if it was already consumed this jump.
-	can_air_dash = true
-	coyote_timer = 0.0
-	jump_buffer_timer = 0.0
-	remaining_air_jumps = max(remaining_air_jumps, max(0, max_air_jumps))
-	if sword_pogo_debug_logs:
-		print("[Pogo] Triggered on body=", body.name, " attack_pitch_sign=", attack_pitch_sign, " hitbox_y=", sword_hitbox.global_position.y, " player_y=", global_position.y, " queued_upward_speed=", pending_recoil_min_upward_speed)
+	_handle_sword_hit_contact(body, &"body")
 
 
 func _on_ladder_detector_body_entered(body: Node2D) -> void:
@@ -1482,5 +1443,46 @@ func _on_animsprite_2d_animation_finished() -> void:
 
 
 func _on_sword_hitbox_area_entered(area: Area2D) -> void:
-	# Apply hit pause
-	pass # Replace with function body.
+	_handle_sword_hit_contact(area, &"area")
+
+
+func _handle_sword_hit_contact(target: Node, source_kind: StringName) -> void:
+	if target == null:
+		if sword_pogo_debug_logs:
+			print("[Pogo] Ignored: null ", source_kind)
+		return
+
+	if not is_attacking:
+		if sword_pogo_debug_logs:
+			print("[Pogo] Ignored: not attacking")
+		return
+
+	_play_sword_hit_fx(sword_hitbox.global_position)
+	if not sword_hit_pause_consumed_this_attack:
+		_request_hit_pause()
+		sword_hit_pause_consumed_this_attack = true
+
+	if sword_pogo_consumed_this_attack:
+		if sword_pogo_debug_logs:
+			print("[Pogo] Ignored: already consumed this slash")
+		return
+
+	if attack_pitch_sign <= 0:
+		if sword_pogo_debug_logs:
+			print("[Pogo] Ignored: slash is not downward")
+		return
+
+	if sword_hitbox.global_position.y <= (global_position.y + sword_pogo_target_below_margin):
+		if sword_pogo_debug_logs:
+			print("[Pogo] Ignored: sword hitbox is not below player enough")
+		return
+
+	pending_recoil_min_upward_speed = maxf(pending_recoil_min_upward_speed, absf(sword_pogo_bounce_speed))
+	sword_pogo_consumed_this_attack = true
+	# Pogo grants one more air dash even if it was already consumed this jump.
+	can_air_dash = true
+	coyote_timer = 0.0
+	jump_buffer_timer = 0.0
+	remaining_air_jumps = max(remaining_air_jumps, max(0, max_air_jumps))
+	if sword_pogo_debug_logs:
+		print("[Pogo] Triggered on ", source_kind, "=", target.name, " attack_pitch_sign=", attack_pitch_sign, " hitbox_y=", sword_hitbox.global_position.y, " player_y=", global_position.y, " queued_upward_speed=", pending_recoil_min_upward_speed)
