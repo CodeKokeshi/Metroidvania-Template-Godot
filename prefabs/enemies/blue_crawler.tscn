@@ -38,7 +38,10 @@ animations = [{
 }]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_y24hc"]
-size = Vector2(13, 12)
+size = Vector2(13, 11)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_m3udc"]
+size = Vector2(15, 13)
 
 [node name="blue_crawler" type="CharacterBody2D" unique_id=1259277468]
 collision_layer = 128
@@ -50,23 +53,28 @@ autoplay = "default"
 frame_progress = 0.07083111
 
 [node name="physics_bodyshape" type="CollisionShape2D" parent="." unique_id=982641730]
-position = Vector2(-0.5, 5)
+position = Vector2(-0.5, 5.5)
 shape = SubResource("RectangleShape2D_y24hc")
 
 [node name="vision_cone" type="Area2D" parent="." unique_id=1256463453]
 collision_layer = 256
 collision_mask = 64
 
-[node name="CollisionShape2D" type="CollisionPolygon2D" parent="vision_cone" unique_id=2011607737]
+[node name="vision_shape" type="CollisionPolygon2D" parent="vision_cone" unique_id=2011607737]
 polygon = PackedVector2Array(55, -34, 76, -11, 76, 11, 55, 34, 0, 11, 0, 0)
 
 [node name="wall_check" type="RayCast2D" parent="." unique_id=2095674090]
 position = Vector2(0, 5)
 target_position = Vector2(9, 0)
 
-[node name="RayCast2D" type="RayCast2D" parent="." unique_id=836359963]
-position = Vector2(12, 0)
-target_position = Vector2(0, 48)
+[node name="hurtbox" type="Area2D" parent="." unique_id=455889053]
+collision_layer = 512
+collision_mask = 2
+
+[node name="hurtbox_shape" type="CollisionShape2D" parent="hurtbox" unique_id=1371523967]
+position = Vector2(-0.5, 5.5)
+shape = SubResource("RectangleShape2D_m3udc")
+debug_color = Color(0.9860571, 0, 0.33224508, 0.41960785)
 
 [connection signal="body_entered" from="vision_cone" to="." method="_on_vision_cone_body_entered"]
 [connection signal="body_exited" from="vision_cone" to="." method="_on_vision_cone_body_exited"]

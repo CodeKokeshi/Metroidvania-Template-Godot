@@ -1479,3 +1479,8 @@ func _on_animsprite_2d_animation_finished() -> void:
 
 	if is_checkpoint_respawn_pending and anim_sprite.animation == CHECKPOINT_RESPAWN_ANIMATION:
 		_finish_checkpoint_respawn_sequence()
+
+
+func _on_sword_hitbox_area_entered(area: Area2D) -> void:
+	# Apply hit pause
+	pass # Replace with function body.

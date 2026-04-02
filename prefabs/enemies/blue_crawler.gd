@@ -19,6 +19,11 @@ enum State {
 @export var edge_check_depth: float = 20.0
 @export var chase_arrive_threshold: float = 4.0
 
+@export_group("Ledge Drop")
+@export var ledge_drop_player_forward_threshold: float = 12.0
+@export var ledge_drop_forward_check_distance: float = 12.0
+@export var ledge_drop_max_height: float = 48.0
+
 @export_group("Patrol Random")
 @export var patrol_random_action_interval_min: float = 1.1
 @export var patrol_random_action_interval_max: float = 2.4
@@ -168,8 +173,13 @@ func _set_state(next_state: State) -> void:
 
 
 func _process_patrol(delta: float) -> void:
-	if is_on_floor() and (_is_front_blocked(facing_direction) or not _has_ground_ahead(facing_direction)):
-		_flip_direction()
+	if is_on_floor():
+		var front_blocked: bool = _is_front_blocked(facing_direction)
+		var no_ground_ahead: bool = not _has_ground_ahead(facing_direction)
+		if front_blocked:
+			_flip_direction()
+		elif no_ground_ahead and not _should_allow_patrol_ledge_drop():
+			_flip_direction()
 
 	_update_patrol_random_behavior(delta)
 
@@ -200,8 +210,13 @@ func _process_chase(delta: float) -> void:
 	else:
 		_clear_chase_vertical_attempt()
 
-	if not player_is_above and is_on_floor() and target_speed != 0.0 and (_is_front_blocked(facing_direction) or not _has_ground_ahead(facing_direction)):
-		target_speed = 0.0
+	if not player_is_above and is_on_floor() and target_speed != 0.0:
+		var front_blocked: bool = _is_front_blocked(facing_direction)
+		var no_ground_ahead: bool = not _has_ground_ahead(facing_direction)
+		if front_blocked:
+			target_speed = 0.0
+		elif no_ground_ahead and not _should_allow_ledge_drop(delta_x):
+			target_speed = 0.0
 
 	_apply_horizontal_speed(target_speed, delta)
 
@@ -319,6 +334,32 @@ func _is_jump_wall_detected() -> bool:
 		wall_check.enabled = true
 	wall_check.force_raycast_update()
 	return wall_check.is_colliding()
+
+
+func _should_allow_ledge_drop(delta_x: float) -> bool:
+	if target_player == null:
+		return false
+
+	var player_forward_distance: float = delta_x * float(facing_direction)
+	if player_forward_distance < ledge_drop_player_forward_threshold:
+		return false
+
+	return _has_landing_within_ledge_drop_height(facing_direction)
+
+
+func _should_allow_patrol_ledge_drop() -> bool:
+	return _has_landing_within_ledge_drop_height(facing_direction)
+
+
+func _has_landing_within_ledge_drop_height(direction: int) -> bool:
+	var origin: Vector2 = global_position + Vector2(float(direction) * ledge_drop_forward_check_distance, 6.0)
+	var target: Vector2 = origin + Vector2(0.0, maxf(1.0, ledge_drop_max_height))
+	var query: PhysicsRayQueryParameters2D = PhysicsRayQueryParameters2D.create(origin, target)
+	query.exclude = [self]
+	query.collision_mask = SOLID_LAYER_MASK
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	return not get_world_2d().direct_space_state.intersect_ray(query).is_empty()
 
 
 func _update_patrol_random_behavior(delta: float) -> void:

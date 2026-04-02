@@ -87,6 +87,7 @@ alt_attack={
 2d_physics/layer_7="player_body"
 2d_physics/layer_8="enemy_body"
 2d_physics/layer_9="vision_cones"
+2d_physics/layer_10="enemy_hurtbox"
 
 [physics]
 
