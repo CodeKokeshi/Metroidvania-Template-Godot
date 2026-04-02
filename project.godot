@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 HitPauseManager="*res://scripts/hit_pause_manager.gd"
 HealthManager="*res://scripts/player_health_manager.gd"
+EnemyStatsConfig="*res://scripts/enemy_stats_config.gd"
 
 [global_group]
 

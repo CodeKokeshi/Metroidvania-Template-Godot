@@ -103,7 +103,6 @@ extends CharacterBody2D
 @export var safe_spot_min_distance: float = 8.0
 
 @export_group("Enemy Contact")
-@export var enemy_contact_damage_by_enemy: Dictionary = {"blue_crawler": 25}
 @export var enemy_contact_side_knockback_speed: float = 220.0
 @export var enemy_contact_side_knockback_lift: float = 170.0
 @export var enemy_contact_top_bounce_speed: float = 360.0
@@ -648,6 +647,8 @@ func _try_update_last_safe_position(on_floor: bool) -> void:
 func _is_overlapping_hazards() -> bool:
 	if hurtbox == null:
 		return false
+	if not hurtbox.monitoring:
+		return false
 
 	for body in hurtbox.get_overlapping_bodies():
 		if _is_trap_source(body):
@@ -692,15 +693,15 @@ func _resolve_enemy_contact_key_from_hitbox(area: Area2D) -> StringName:
 	return StringName()
 
 
-func _get_configured_enemy_contact_damage(enemy_key: StringName) -> int:
-	var key: String = String(enemy_key)
-	if key.is_empty():
+func _get_configured_enemy_damage(enemy_key: StringName) -> int:
+	if enemy_key == StringName():
 		return 0
 
-	if not enemy_contact_damage_by_enemy.has(key):
+	var enemy_stats_config: Node = get_node_or_null("/root/EnemyStatsConfig")
+	if enemy_stats_config == null or not enemy_stats_config.has_method("get_enemy_damage"):
 		return 0
 
-	return max(0, int(enemy_contact_damage_by_enemy[key]))
+	return max(0, int(enemy_stats_config.call("get_enemy_damage", enemy_key)))
 
 
 func _apply_enemy_contact_reaction(enemy_body: Node2D) -> void:
@@ -1564,12 +1565,12 @@ func _on_hurtbox_area_entered(area: Area2D) -> void:
 	if enemy_key == StringName():
 		return
 
-	var contact_damage_amount: int = _get_configured_enemy_contact_damage(enemy_key)
-	if contact_damage_amount <= 0:
+	var enemy_damage_amount: int = _get_configured_enemy_damage(enemy_key)
+	if enemy_damage_amount <= 0:
 		return
 
 	var enemy_node: Node2D = area.get_parent() as Node2D
-	_handle_enemy_contact(enemy_node, contact_damage_amount)
+	_handle_enemy_contact(enemy_node, enemy_damage_amount)
 
 
 func _on_sword_hitbox_body_entered(body: Node2D) -> void:
