@@ -9,6 +9,26 @@
 [ext_resource type="PackedScene" uid="uid://cjg182ux28080" path="res://prefabs/fx/smoke_emission.tscn" id="5_2ymgb"]
 [ext_resource type="Script" uid="uid://563vvsq58r36" path="res://prefabs/player_related/expression.gd" id="6_4jpqf"]
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_f7h7y"]
+atlas = ExtResource("3_cqeii")
+region = Rect2(288, 0, 72, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_tuc8i"]
+atlas = ExtResource("3_cqeii")
+region = Rect2(216, 0, 72, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_hk4ei"]
+atlas = ExtResource("3_cqeii")
+region = Rect2(144, 0, 72, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_5jdg1"]
+atlas = ExtResource("3_cqeii")
+region = Rect2(72, 0, 72, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_l3fdq"]
+atlas = ExtResource("3_cqeii")
+region = Rect2(0, 0, 72, 72)
+
 [sub_resource type="AtlasTexture" id="AtlasTexture_eq5hm"]
 atlas = ExtResource("1_0bakr")
 region = Rect2(0, 0, 24, 24)
@@ -16,26 +36,6 @@ region = Rect2(0, 0, 24, 24)
 [sub_resource type="AtlasTexture" id="AtlasTexture_qvnjy"]
 atlas = ExtResource("1_0bakr")
 region = Rect2(24, 0, 24, 24)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_l3fdq"]
-atlas = ExtResource("3_cqeii")
-region = Rect2(0, 0, 72, 72)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_5jdg1"]
-atlas = ExtResource("3_cqeii")
-region = Rect2(72, 0, 72, 72)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_hk4ei"]
-atlas = ExtResource("3_cqeii")
-region = Rect2(144, 0, 72, 72)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_tuc8i"]
-atlas = ExtResource("3_cqeii")
-region = Rect2(216, 0, 72, 72)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_f7h7y"]
-atlas = ExtResource("3_cqeii")
-region = Rect2(288, 0, 72, 72)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_khwtl"]
 atlas = ExtResource("1_0bakr")
@@ -47,22 +47,6 @@ region = Rect2(24, 0, 24, 24)
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_i8o8o"]
 animations = [{
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_eq5hm")
-}],
-"loop": false,
-"name": &"idle",
-"speed": 5.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_qvnjy")
-}],
-"loop": false,
-"name": &"jump",
-"speed": 5.0
-}, {
 "frames": [{
 "duration": 1.0,
 "texture": SubResource("AtlasTexture_f7h7y")
@@ -82,6 +66,22 @@ animations = [{
 "loop": false,
 "name": &"checkpoint_respawn",
 "speed": 14.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_eq5hm")
+}],
+"loop": false,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_qvnjy")
+}],
+"loop": false,
+"name": &"jump",
+"speed": 5.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -119,7 +119,7 @@ animations = [{
 size = Vector2(12, 18)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_cqeii"]
-size = Vector2(6, 18)
+size = Vector2(6, 4)
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_l3fdq"]
 size = Vector2(12, 17)
@@ -160,15 +160,14 @@ animations = [{
 size = Vector2(34, 10)
 
 [node name="player" type="CharacterBody2D" unique_id=1959709043 groups=["pausables"]]
+collision_layer = 64
 script = ExtResource("2_player")
 sword_pogo_target_below_margin = 0.0
 
 [node name="animsprite2D" type="AnimatedSprite2D" parent="." unique_id=1835179852]
 sprite_frames = SubResource("SpriteFrames_i8o8o")
-animation = &"trapped"
+animation = &"idle"
 autoplay = "idle"
-frame = 4
-frame_progress = 1.0
 
 [node name="hurtbox" type="Area2D" parent="animsprite2D" unique_id=1474873073]
 collision_layer = 4
@@ -183,7 +182,7 @@ collision_layer = 32
 collision_mask = 16
 
 [node name="ladder_detector_shape" type="CollisionShape2D" parent="animsprite2D/ladder_detector" unique_id=2062065775]
-position = Vector2(0, 3)
+position = Vector2(0, 10)
 shape = SubResource("RectangleShape2D_cqeii")
 debug_color = Color(0.9824943, 0, 0.36588606, 0.41960785)
 

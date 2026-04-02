@@ -24,6 +24,10 @@ HealthManager="*res://scripts/player_health_manager.gd"
 
 pausables="Affected by Hit Pause"
 
+[gui]
+
+theme/custom_font="uid://cvg5dw1s53ome"
+
 [input]
 
 left={
@@ -80,6 +84,8 @@ alt_attack={
 2d_physics/layer_4="traps"
 2d_physics/layer_5="ladder"
 2d_physics/layer_6="ladder_detector"
+2d_physics/layer_7="player_body"
+2d_physics/layer_8="enemy_body"
 
 [physics]
 
