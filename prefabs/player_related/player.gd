@@ -102,6 +102,16 @@ extends CharacterBody2D
 @export var safe_spot_check_interval: float = 0.5
 @export var safe_spot_min_distance: float = 8.0
 
+@export_group("Enemy Contact")
+@export var enemy_contact_damage_by_enemy: Dictionary = {"blue_crawler": 25}
+@export var enemy_contact_side_knockback_speed: float = 220.0
+@export var enemy_contact_side_knockback_lift: float = 170.0
+@export var enemy_contact_top_bounce_speed: float = 360.0
+@export var enemy_contact_top_margin: float = 4.0
+@export var enemy_contact_invincibility_time: float = 0.8
+@export var enemy_contact_blink_interval: float = 0.08
+@export var enemy_contact_blink_alpha: float = 0.35
+
 const ACTION_LEFT: StringName = &"left"
 const ACTION_RIGHT: StringName = &"right"
 const ACTION_UP: StringName = &"up"
@@ -142,6 +152,7 @@ var last_vertical_speed: float = 0.0
 var safe_spot_check_timer: float = 0.0
 var last_safe_position: Vector2 = Vector2.ZERO
 var has_last_safe_position: bool = false
+var base_player_modulate: Color = Color.WHITE
 var base_sprite_scale: Vector2 = Vector2.ONE
 var base_anim_sprite_position: Vector2 = Vector2.ZERO
 var base_weapon_pivot_position: Vector2 = Vector2.ZERO
@@ -190,11 +201,15 @@ var sword_hit_pause_consumed_this_attack: bool = false
 var sword_hit_fx_pool: Array[CPUParticles2D] = []
 var sword_hit_fx_available: Array[CPUParticles2D] = []
 var is_sword_hit_fx_pool_initialized: bool = false
+var enemy_contact_invincibility_timer: float = 0.0
+var enemy_contact_blink_timer: float = 0.0
+var enemy_contact_blink_visible: bool = true
 var is_trap_respawn_pending: bool = false
 var is_checkpoint_respawn_pending: bool = false
 
 
 func _ready() -> void:
+	base_player_modulate = modulate
 	base_sprite_scale = anim_sprite.scale
 	base_anim_sprite_position = anim_sprite.position
 	base_weapon_pivot_position = weapon_pivot.position
@@ -296,6 +311,7 @@ func _update_timers(delta: float, on_floor: bool) -> void:
 	land_squash_timer = maxf(0.0, land_squash_timer - delta)
 	gun_shot_timer = maxf(0.0, gun_shot_timer - delta)
 	gun_attack_cooldown_timer = maxf(0.0, gun_attack_cooldown_timer - delta)
+	_update_enemy_contact_invincibility(delta)
 	if is_gun_reloading:
 		gun_reload_timer = maxf(0.0, gun_reload_timer - delta)
 		if gun_reload_timer <= 0.0:
@@ -655,6 +671,116 @@ func _is_trap_source(node: Node) -> bool:
 	return true
 
 
+func _resolve_enemy_contact_key_from_hitbox(area: Area2D) -> StringName:
+	if area == null:
+		return StringName()
+
+	if area.name != "hitbox":
+		return StringName()
+
+	var enemy_root: Node = area.get_parent()
+	if enemy_root == null:
+		return StringName()
+
+	var enemy_script: Script = enemy_root.get_script() as Script
+	if enemy_script != null and enemy_script.resource_path.ends_with("/blue_crawler.gd"):
+		return &"blue_crawler"
+
+	if enemy_root.name.to_lower().begins_with("blue_crawler"):
+		return &"blue_crawler"
+
+	return StringName()
+
+
+func _get_configured_enemy_contact_damage(enemy_key: StringName) -> int:
+	var key: String = String(enemy_key)
+	if key.is_empty():
+		return 0
+
+	if not enemy_contact_damage_by_enemy.has(key):
+		return 0
+
+	return max(0, int(enemy_contact_damage_by_enemy[key]))
+
+
+func _apply_enemy_contact_reaction(enemy_body: Node2D) -> void:
+	var enemy_position: Vector2 = enemy_body.global_position if enemy_body != null else (global_position + Vector2(float(facing_sign), 0.0))
+	var came_from_above: bool = velocity.y > 0.0 and global_position.y <= (enemy_position.y - enemy_contact_top_margin)
+	var away_sign: int = -1 if enemy_position.x > global_position.x else 1
+	if is_zero_approx(enemy_position.x - global_position.x):
+		away_sign = -facing_sign if facing_sign != 0 else 1
+
+	is_dashing = false
+	dash_timer = 0.0
+	dash_end_hang_timer = 0.0
+	pending_recoil_velocity_add = Vector2.ZERO
+	pending_recoil_min_upward_speed = 0.0
+	jump_buffer_timer = 0.0
+	coyote_timer = 0.0
+
+	if came_from_above:
+		velocity.y = -absf(enemy_contact_top_bounce_speed)
+		velocity.x = float(away_sign) * (enemy_contact_side_knockback_speed * 0.35)
+	else:
+		velocity.x = float(away_sign) * absf(enemy_contact_side_knockback_speed)
+		velocity.y = -absf(enemy_contact_side_knockback_lift)
+
+
+func _start_enemy_contact_invincibility() -> void:
+	enemy_contact_invincibility_timer = maxf(0.0, enemy_contact_invincibility_time)
+	if enemy_contact_invincibility_timer <= 0.0:
+		_finish_enemy_contact_invincibility()
+		return
+
+	enemy_contact_blink_timer = 0.0
+	enemy_contact_blink_visible = true
+	_set_hurtbox_active(false)
+
+
+func _update_enemy_contact_invincibility(delta: float) -> void:
+	if enemy_contact_invincibility_timer <= 0.0:
+		return
+
+	enemy_contact_invincibility_timer = maxf(0.0, enemy_contact_invincibility_timer - delta)
+	enemy_contact_blink_timer = maxf(0.0, enemy_contact_blink_timer - delta)
+	if enemy_contact_blink_timer <= 0.0:
+		enemy_contact_blink_timer = maxf(0.02, enemy_contact_blink_interval)
+		enemy_contact_blink_visible = not enemy_contact_blink_visible
+		_set_enemy_contact_blink_visible(enemy_contact_blink_visible)
+
+	if enemy_contact_invincibility_timer <= 0.0:
+		_finish_enemy_contact_invincibility()
+
+
+func _finish_enemy_contact_invincibility() -> void:
+	enemy_contact_invincibility_timer = 0.0
+	enemy_contact_blink_timer = 0.0
+	enemy_contact_blink_visible = true
+	_set_enemy_contact_blink_visible(true)
+	if not is_trap_respawn_pending and not is_checkpoint_respawn_pending:
+		_set_hurtbox_active(true)
+
+
+func _set_enemy_contact_blink_visible(is_visible: bool) -> void:
+	var target_modulate: Color = base_player_modulate
+	var blink_alpha: float = clampf(enemy_contact_blink_alpha, 0.05, 1.0)
+	target_modulate.a = base_player_modulate.a * (1.0 if is_visible else blink_alpha)
+	modulate = target_modulate
+
+
+func _clear_enemy_contact_state() -> void:
+	enemy_contact_invincibility_timer = 0.0
+	enemy_contact_blink_timer = 0.0
+	enemy_contact_blink_visible = true
+	_set_enemy_contact_blink_visible(true)
+
+
+func _handle_enemy_contact(enemy_body: Node2D, contact_damage_amount: int) -> void:
+	take_damage(max(0, contact_damage_amount))
+	_apply_enemy_contact_reaction(enemy_body)
+	_start_enemy_contact_invincibility()
+
+
 func _respawn_to_last_safe_position() -> void:
 	if has_last_safe_position:
 		global_position = last_safe_position
@@ -694,9 +820,8 @@ func _start_trap_respawn_sequence() -> void:
 	weapon_sprite.visible = false
 	gun_sprite.visible = false
 	gun_emission.emitting = false
-
-	if hurtbox != null:
-		hurtbox.set_deferred("monitoring", false)
+	_clear_enemy_contact_state()
+	_set_hurtbox_active(false)
 
 	anim_sprite.play(TRAPPED_ANIMATION)
 
@@ -722,9 +847,8 @@ func _start_checkpoint_respawn_sequence() -> void:
 	coyote_timer = 0.0
 	is_on_ladder = false
 	_apply_weapon_mode_visibility()
-
-	if hurtbox != null:
-		hurtbox.set_deferred("monitoring", false)
+	_clear_enemy_contact_state()
+	_set_hurtbox_active(false)
 
 	if anim_sprite.sprite_frames != null and anim_sprite.sprite_frames.has_animation(CHECKPOINT_RESPAWN_ANIMATION):
 		anim_sprite.play(CHECKPOINT_RESPAWN_ANIMATION)
@@ -738,9 +862,7 @@ func _finish_checkpoint_respawn_sequence() -> void:
 		return
 
 	is_checkpoint_respawn_pending = false
-
-	if hurtbox != null:
-		hurtbox.set_deferred("monitoring", true)
+	_set_hurtbox_active(true)
 
 	_apply_weapon_mode_visibility()
 	_update_animation()
@@ -1252,6 +1374,14 @@ func _set_sword_hitbox_active(active: bool) -> void:
 	sword_hitbox.set_deferred("monitorable", active)
 
 
+func _set_hurtbox_active(active: bool) -> void:
+	if hurtbox == null:
+		return
+
+	hurtbox.set_deferred("monitoring", active)
+	hurtbox.set_deferred("monitorable", active)
+
+
 func _queue_gun_push_recoil(shot_direction: Vector2) -> void:
 	var normalized_direction: Vector2 = shot_direction.normalized()
 	if normalized_direction == Vector2.ZERO:
@@ -1412,11 +1542,34 @@ func _on_hurtbox_body_entered(body: Node2D) -> void:
 	if is_trap_respawn_pending or is_checkpoint_respawn_pending:
 		return
 
-	if not _is_trap_source(body):
+	if enemy_contact_invincibility_timer > 0.0:
 		return
 
-	take_damage(max(0, trap_contact_damage))
-	_start_trap_respawn_sequence()
+	if _is_trap_source(body):
+		take_damage(max(0, trap_contact_damage))
+		_start_trap_respawn_sequence()
+
+
+func _on_hurtbox_area_entered(area: Area2D) -> void:
+	if area == null:
+		return
+
+	if is_trap_respawn_pending or is_checkpoint_respawn_pending:
+		return
+
+	if enemy_contact_invincibility_timer > 0.0:
+		return
+
+	var enemy_key: StringName = _resolve_enemy_contact_key_from_hitbox(area)
+	if enemy_key == StringName():
+		return
+
+	var contact_damage_amount: int = _get_configured_enemy_contact_damage(enemy_key)
+	if contact_damage_amount <= 0:
+		return
+
+	var enemy_node: Node2D = area.get_parent() as Node2D
+	_handle_enemy_contact(enemy_node, contact_damage_amount)
 
 
 func _on_sword_hitbox_body_entered(body: Node2D) -> void:

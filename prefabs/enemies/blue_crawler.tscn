@@ -76,5 +76,14 @@ position = Vector2(-0.5, 5.5)
 shape = SubResource("RectangleShape2D_m3udc")
 debug_color = Color(0.9860571, 0, 0.33224508, 0.41960785)
 
+[node name="hitbox" type="Area2D" parent="." unique_id=1169641060]
+collision_layer = 1024
+collision_mask = 4
+
+[node name="hitbox_shape" type="CollisionShape2D" parent="hitbox" unique_id=1433605357]
+position = Vector2(-0.5, 5.5)
+shape = SubResource("RectangleShape2D_m3udc")
+debug_color = Color(0.9860571, 0, 0.33224508, 0.41960785)
+
 [connection signal="body_entered" from="vision_cone" to="." method="_on_vision_cone_body_entered"]
 [connection signal="body_exited" from="vision_cone" to="." method="_on_vision_cone_body_exited"]
