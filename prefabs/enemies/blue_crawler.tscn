@@ -58,6 +58,15 @@ collision_layer = 256
 collision_mask = 64
 
 [node name="CollisionShape2D" type="CollisionPolygon2D" parent="vision_cone" unique_id=2011607737]
-polygon = PackedVector2Array(55, -34, 76, -11, 76, 11, 0, 11, 0, 0)
+polygon = PackedVector2Array(55, -34, 76, -11, 76, 11, 55, 34, 0, 11, 0, 0)
+
+[node name="wall_check" type="RayCast2D" parent="." unique_id=2095674090]
+position = Vector2(0, 5)
+target_position = Vector2(9, 0)
+
+[node name="RayCast2D" type="RayCast2D" parent="." unique_id=836359963]
+position = Vector2(12, 0)
+target_position = Vector2(0, 48)
 
 [connection signal="body_entered" from="vision_cone" to="." method="_on_vision_cone_body_entered"]
+[connection signal="body_exited" from="vision_cone" to="." method="_on_vision_cone_body_exited"]

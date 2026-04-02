@@ -567,4 +567,4 @@ text = "Dash and Recoil Jump
 horizontal_alignment = 1
 
 [node name="blue_crawler" parent="." unique_id=1259277468 instance=ExtResource("5_o6mel")]
-position = Vector2(647, 368)
+position = Vector2(604, 351)
