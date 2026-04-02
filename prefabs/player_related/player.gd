@@ -112,6 +112,8 @@ const ACTION_ALT_ATTACK: StringName = &"alt_attack"
 const ACTION_SWITCH_WEAPON: StringName = &"switch_weapon"
 const ACTION_DASH: StringName = &"dash"
 const TRAP_COLLISION_LAYER_INDEX: int = 4
+const TRAPPED_ANIMATION: StringName = &"trapped"
+const CHECKPOINT_RESPAWN_ANIMATION: StringName = &"checkpoint_respawn"
 const BULLET_SCENE: PackedScene = preload("res://prefabs/player_related/bullet.tscn")
 const SWORD_HIT_FX_SCENE: PackedScene = preload("res://prefabs/fx/sword_hit.tscn")
 const DASH_DISTORTION_SHADER: Shader = preload("res://prefabs/fx/dash_distortion.gdshader")
@@ -188,6 +190,8 @@ var sword_hit_pause_consumed_this_attack: bool = false
 var sword_hit_fx_pool: Array[CPUParticles2D] = []
 var sword_hit_fx_available: Array[CPUParticles2D] = []
 var is_sword_hit_fx_pool_initialized: bool = false
+var is_trap_respawn_pending: bool = false
+var is_checkpoint_respawn_pending: bool = false
 
 
 func _ready() -> void:
@@ -228,6 +232,13 @@ func _physics_process(delta: float) -> void:
 	var horizontal_input: float = _get_horizontal_input()
 
 	_update_timers(delta, was_on_floor)
+	if is_trap_respawn_pending:
+		_process_trapped_state(delta, was_on_floor)
+		return
+	if is_checkpoint_respawn_pending:
+		_process_checkpoint_respawn_state(delta, was_on_floor)
+		return
+
 	_buffer_jump_input()
 	_refresh_ladder_contact_state()
 	_try_start_dash(was_on_floor)
@@ -274,10 +285,11 @@ func _update_timers(delta: float, on_floor: bool) -> void:
 
 	dash_ground_to_jump_lock_timer = maxf(0.0, dash_ground_to_jump_lock_timer - delta)
 	ladder_jump_detach_timer = maxf(0.0, ladder_jump_detach_timer - delta)
-	safe_spot_check_timer = maxf(0.0, safe_spot_check_timer - delta)
-	if safe_spot_check_timer <= 0.0:
-		safe_spot_check_timer = maxf(0.0, safe_spot_check_interval)
-		_try_update_last_safe_position(on_floor)
+	if not is_trap_respawn_pending and not is_checkpoint_respawn_pending:
+		safe_spot_check_timer = maxf(0.0, safe_spot_check_timer - delta)
+		if safe_spot_check_timer <= 0.0:
+			safe_spot_check_timer = maxf(0.0, safe_spot_check_interval)
+			_try_update_last_safe_position(on_floor)
 
 	jump_buffer_timer = maxf(0.0, jump_buffer_timer - delta)
 	jump_squash_timer = maxf(0.0, jump_squash_timer - delta)
@@ -288,6 +300,42 @@ func _update_timers(delta: float, on_floor: bool) -> void:
 		gun_reload_timer = maxf(0.0, gun_reload_timer - delta)
 		if gun_reload_timer <= 0.0:
 			_finish_gun_reload()
+
+
+func _process_trapped_state(delta: float, was_on_floor: bool) -> void:
+	velocity = Vector2.ZERO
+	pending_recoil_velocity_add = Vector2.ZERO
+	pending_recoil_min_upward_speed = 0.0
+	last_vertical_speed = 0.0
+
+	if anim_sprite.animation != TRAPPED_ANIMATION:
+		anim_sprite.play(TRAPPED_ANIMATION)
+
+	move_and_slide()
+	_handle_landing_squash(was_on_floor)
+	_update_squash(delta)
+	_update_dash_distortion_fx(delta)
+	_update_dash_trail_fx(delta)
+
+
+func _process_checkpoint_respawn_state(delta: float, was_on_floor: bool) -> void:
+	velocity = Vector2.ZERO
+	pending_recoil_velocity_add = Vector2.ZERO
+	pending_recoil_min_upward_speed = 0.0
+	last_vertical_speed = 0.0
+
+	if anim_sprite.animation != CHECKPOINT_RESPAWN_ANIMATION:
+		if anim_sprite.sprite_frames != null and anim_sprite.sprite_frames.has_animation(CHECKPOINT_RESPAWN_ANIMATION):
+			anim_sprite.play(CHECKPOINT_RESPAWN_ANIMATION)
+		else:
+			_finish_checkpoint_respawn_sequence()
+			return
+
+	move_and_slide()
+	_handle_landing_squash(was_on_floor)
+	_update_squash(delta)
+	_update_dash_distortion_fx(delta)
+	_update_dash_trail_fx(delta)
 
 
 func _buffer_jump_input() -> void:
@@ -562,6 +610,9 @@ func _create_white_pixel_texture() -> Texture2D:
 
 
 func _try_update_last_safe_position(on_floor: bool) -> void:
+	if is_trap_respawn_pending or is_checkpoint_respawn_pending:
+		return
+
 	if not on_floor:
 		return
 
@@ -618,6 +669,81 @@ func _respawn_to_last_safe_position() -> void:
 	coyote_timer = 0.0
 	is_on_ladder = false
 	ladder_jump_detach_timer = maxf(ladder_jump_detach_timer, ladder_jump_detach_time)
+	safe_spot_check_timer = maxf(0.0, safe_spot_check_interval)
+
+
+func _start_trap_respawn_sequence() -> void:
+	if is_trap_respawn_pending:
+		return
+
+	is_trap_respawn_pending = true
+	is_dashing = false
+	dash_timer = 0.0
+	dash_end_hang_timer = 0.0
+	dash_ground_to_jump_lock_timer = 0.0
+	is_attacking = false
+	sword_pogo_consumed_this_attack = false
+	sword_hit_pause_consumed_this_attack = false
+	_set_sword_hitbox_active(false)
+	gun_shot_timer = 0.0
+	pending_recoil_velocity_add = Vector2.ZERO
+	pending_recoil_min_upward_speed = 0.0
+	velocity = Vector2.ZERO
+	jump_buffer_timer = 0.0
+	coyote_timer = 0.0
+	weapon_sprite.visible = false
+	gun_sprite.visible = false
+	gun_emission.emitting = false
+
+	if hurtbox != null:
+		hurtbox.set_deferred("monitoring", false)
+
+	anim_sprite.play(TRAPPED_ANIMATION)
+
+
+func _start_checkpoint_respawn_sequence() -> void:
+	if is_checkpoint_respawn_pending:
+		return
+
+	is_checkpoint_respawn_pending = true
+	is_dashing = false
+	dash_timer = 0.0
+	dash_end_hang_timer = 0.0
+	dash_ground_to_jump_lock_timer = 0.0
+	is_attacking = false
+	sword_pogo_consumed_this_attack = false
+	sword_hit_pause_consumed_this_attack = false
+	_set_sword_hitbox_active(false)
+	gun_shot_timer = 0.0
+	pending_recoil_velocity_add = Vector2.ZERO
+	pending_recoil_min_upward_speed = 0.0
+	velocity = Vector2.ZERO
+	jump_buffer_timer = 0.0
+	coyote_timer = 0.0
+	is_on_ladder = false
+	_apply_weapon_mode_visibility()
+
+	if hurtbox != null:
+		hurtbox.set_deferred("monitoring", false)
+
+	if anim_sprite.sprite_frames != null and anim_sprite.sprite_frames.has_animation(CHECKPOINT_RESPAWN_ANIMATION):
+		anim_sprite.play(CHECKPOINT_RESPAWN_ANIMATION)
+		return
+
+	_finish_checkpoint_respawn_sequence()
+
+
+func _finish_checkpoint_respawn_sequence() -> void:
+	if not is_checkpoint_respawn_pending:
+		return
+
+	is_checkpoint_respawn_pending = false
+
+	if hurtbox != null:
+		hurtbox.set_deferred("monitoring", true)
+
+	_apply_weapon_mode_visibility()
+	_update_animation()
 
 
 func _get_health_manager() -> Node:
@@ -743,7 +869,10 @@ func _process_ladder_movement(horizontal_input: float, delta: float, was_on_floo
 	move_and_slide()
 
 	_handle_landing_squash(was_on_floor)
-	_update_animation()
+	if absf(vertical_input) > 0.01:
+		_play_animation_if_needed(&"walk")
+	else:
+		_play_animation_if_needed(&"idle")
 	_update_squash(delta)
 	_update_dash_distortion_fx(delta)
 	_update_dash_trail_fx(delta)
@@ -1115,8 +1244,12 @@ func _update_expression_visibility() -> void:
 
 
 func _set_sword_hitbox_active(active: bool) -> void:
-	sword_hitbox.monitoring = active
-	sword_hitbox.monitorable = active
+	if sword_hitbox == null:
+		return
+
+	# This can be called from physics signal callbacks (trap/hit events), so defer to avoid lock warnings.
+	sword_hitbox.set_deferred("monitoring", active)
+	sword_hitbox.set_deferred("monitorable", active)
 
 
 func _queue_gun_push_recoil(shot_direction: Vector2) -> void:
@@ -1272,15 +1405,18 @@ func _on_weapon_slash_animation_finished() -> void:
 
 func _on_hurtbox_body_entered(body: Node2D) -> void:
 	# if what entered was from Mask (Collision Layer 4). Then it is a trap.
-	# If it is a trap immedietly spawn to the last safe point with a damage health of 25.
+	# If it is a trap, apply damage and start trapped animation before respawn.
 	if body == null:
+		return
+
+	if is_trap_respawn_pending or is_checkpoint_respawn_pending:
 		return
 
 	if not _is_trap_source(body):
 		return
 
 	take_damage(max(0, trap_contact_damage))
-	_respawn_to_last_safe_position()
+	_start_trap_respawn_sequence()
 
 
 func _on_sword_hitbox_body_entered(body: Node2D) -> void:
@@ -1332,3 +1468,14 @@ func _on_ladder_detector_body_entered(body: Node2D) -> void:
 
 	# Collision mask is set to ladder physics bodies only.
 	is_on_ladder = true
+
+
+func _on_animsprite_2d_animation_finished() -> void:
+	if is_trap_respawn_pending and anim_sprite.animation == TRAPPED_ANIMATION:
+		is_trap_respawn_pending = false
+		_respawn_to_last_safe_position()
+		_start_checkpoint_respawn_sequence()
+		return
+
+	if is_checkpoint_respawn_pending and anim_sprite.animation == CHECKPOINT_RESPAWN_ANIMATION:
+		_finish_checkpoint_respawn_sequence()

@@ -3,6 +3,7 @@
 [ext_resource type="Texture2D" uid="uid://c5h8t5wd7qmld" path="res://assets/characters.png" id="1_0bakr"]
 [ext_resource type="Texture2D" uid="uid://dqbaffkcbtex1" path="res://assets/default-tiles.png" id="2_i8o8o"]
 [ext_resource type="Script" uid="uid://wlgt6kvnw3g" path="res://prefabs/player_related/player.gd" id="2_player"]
+[ext_resource type="Texture2D" uid="uid://cljtn8xihjeke" path="res://assets/player_related/trapped.png" id="3_cqeii"]
 [ext_resource type="Texture2D" uid="uid://fb6g6p0twl7f" path="res://assets/player_related/sword_attack.png" id="3_qvnjy"]
 [ext_resource type="Texture2D" uid="uid://cyis37v858ndb" path="res://assets/player_related/gun.png" id="4_khwtl"]
 [ext_resource type="PackedScene" uid="uid://cjg182ux28080" path="res://prefabs/fx/smoke_emission.tscn" id="5_2ymgb"]
@@ -15,6 +16,26 @@ region = Rect2(0, 0, 24, 24)
 [sub_resource type="AtlasTexture" id="AtlasTexture_qvnjy"]
 atlas = ExtResource("1_0bakr")
 region = Rect2(24, 0, 24, 24)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_l3fdq"]
+atlas = ExtResource("3_cqeii")
+region = Rect2(0, 0, 72, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_5jdg1"]
+atlas = ExtResource("3_cqeii")
+region = Rect2(72, 0, 72, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_hk4ei"]
+atlas = ExtResource("3_cqeii")
+region = Rect2(144, 0, 72, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_tuc8i"]
+atlas = ExtResource("3_cqeii")
+region = Rect2(216, 0, 72, 72)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_f7h7y"]
+atlas = ExtResource("3_cqeii")
+region = Rect2(288, 0, 72, 72)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_khwtl"]
 atlas = ExtResource("1_0bakr")
@@ -41,6 +62,46 @@ animations = [{
 "loop": false,
 "name": &"jump",
 "speed": 5.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_f7h7y")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_tuc8i")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_hk4ei")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_5jdg1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_l3fdq")
+}],
+"loop": false,
+"name": &"checkpoint_respawn",
+"speed": 14.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_l3fdq")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_5jdg1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_hk4ei")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_tuc8i")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_f7h7y")
+}],
+"loop": false,
+"name": &"trapped",
+"speed": 12.0
 }, {
 "frames": [{
 "duration": 1.0,
@@ -104,8 +165,10 @@ sword_pogo_target_below_margin = 0.0
 
 [node name="animsprite2D" type="AnimatedSprite2D" parent="." unique_id=1835179852]
 sprite_frames = SubResource("SpriteFrames_i8o8o")
-animation = &"idle"
+animation = &"trapped"
 autoplay = "idle"
+frame = 4
+frame_progress = 1.0
 
 [node name="hurtbox" type="Area2D" parent="animsprite2D" unique_id=1474873073]
 collision_layer = 4
@@ -165,6 +228,7 @@ position = Vector2(12, 0)
 [node name="bullet_spawns_here" type="Marker2D" parent="pivot/gun" unique_id=268194591]
 position = Vector2(12, 0)
 
+[connection signal="animation_finished" from="animsprite2D" to="." method="_on_animsprite_2d_animation_finished"]
 [connection signal="body_entered" from="animsprite2D/hurtbox" to="." method="_on_hurtbox_body_entered"]
 [connection signal="body_entered" from="animsprite2D/ladder_detector" to="." method="_on_ladder_detector_body_entered"]
 [connection signal="animation_finished" from="pivot/weapon" to="." method="_on_weapon_slash_animation_finished"]
