@@ -4,7 +4,12 @@ extends CharacterBody2D
 enum State {
 	PATROL,
 	CHASE,
-	CONFUSED
+	CONFUSED,
+	DIZZY,
+	CHARGE,
+	ATTACK,
+	HURT,
+	DEAD
 }
 
 @export_group("Movement")
@@ -18,6 +23,37 @@ enum State {
 @export var edge_check_forward: float = 8.0
 @export var edge_check_depth: float = 20.0
 @export var chase_arrive_threshold: float = 4.0
+
+@export_group("Attack")
+@export var attack_charge_duration: float = 1.0
+@export var attack_speed: float = 220.0
+@export var attack_distance_tiles: float = 8.0
+@export var attack_tile_size_px: float = 18.0
+@export var attack_start_distance: float = 78.0
+@export var attack_vertical_tolerance: float = 24.0
+@export var attack_cooldown_after_end: float = 1.1
+
+@export_group("Charge FX")
+@export var charge_shake_intensity: float = 1.6
+@export var charge_squash_x: float = 0.14
+@export var charge_stretch_y: float = 0.12
+@export var charge_pulse_speed: float = 18.0
+
+@export_group("Dizzy")
+@export var dizzy_duration: float = 0.85
+@export var dizzy_shake_intensity: float = 1.2
+@export var dizzy_knockback_speed: float = 150.0
+@export var dizzy_knockback_lift: float = 90.0
+@export var dizzy_flip_interval: float = 0.1
+
+@export_group("Hurt")
+@export var hurt_run_speed: float = 130.0
+@export var hurt_run_distance_tiles: float = 3.0
+@export var hurt_run_tile_size_px: float = 18.0
+@export var hurt_recover_delay: float = 0.12
+
+@export_group("Death")
+@export var death_cleanup_delay: float = 0.35
 
 @export_group("Ledge Drop")
 @export var ledge_drop_player_forward_threshold: float = 12.0
@@ -54,10 +90,16 @@ enum State {
 
 const SOLID_LAYER_MASK: int = 1
 const PLAYER_BODY_LAYER_MASK: int = 64
+const PLAYER_HURTBOX_LAYER_INDEX: int = 3
+const SMOKE_EMISSION_SCENE: PackedScene = preload("res://prefabs/fx/smoke_emission.tscn")
+const ENEMY_STATS_KEY: StringName = &"blue_crawler"
 
 @onready var anim: AnimatedSprite2D = $"anim"
 @onready var vision_cone: Area2D = $"vision_cone"
 @onready var wall_check: RayCast2D = $"wall_check"
+@onready var hitbox: Area2D = $"hitbox"
+@onready var hurtbox: Area2D = $"hurtbox"
+@onready var physics_bodyshape: CollisionShape2D = $"physics_bodyshape"
 
 var current_state: State = State.PATROL
 var facing_direction: int = -1
@@ -69,6 +111,8 @@ var has_confused_jumped: bool = false
 var target_player: CharacterBody2D = null
 var base_vision_cone_scale: Vector2 = Vector2.ONE
 var base_wall_check_target_position: Vector2 = Vector2.ZERO
+var base_anim_scale: Vector2 = Vector2.ONE
+var base_anim_position: Vector2 = Vector2.ZERO
 var chase_jump_cooldown_timer: float = 0.0
 var chase_vertical_attempt_active: bool = false
 var chase_vertical_attempt_timer: float = 0.0
@@ -79,11 +123,30 @@ var patrol_random_jump_cooldown_timer: float = 0.0
 var chase_jump_in_progress: bool = false
 var chase_jump_left_ground: bool = false
 var chase_jump_start_ground_position: Vector2 = Vector2.ZERO
+var attack_cooldown_timer: float = 0.0
+var attack_charge_timer: float = 0.0
+var attack_distance_remaining: float = 0.0
+var attack_locked_direction: int = 0
+var dizzy_timer: float = 0.0
+var dizzy_flip_timer: float = 0.0
+var hurt_run_remaining: float = 0.0
+var hurt_run_direction: int = 0
+var hurt_recover_timer: float = 0.0
+var last_damage_source_position: Vector2 = Vector2.ZERO
+var has_last_damage_source: bool = false
+var max_hp: int = 1
+var current_hp: int = 1
+var enemy_attack_power: int = 25
+var death_timer: float = 0.0
+var state_vfx_time: float = 0.0
 
 
 func _ready() -> void:
 	base_vision_cone_scale = vision_cone.scale
 	base_wall_check_target_position = wall_check.target_position
+	base_anim_scale = anim.scale
+	base_anim_position = anim.position
+	_initialize_stats_from_config()
 	_set_facing_direction(facing_direction)
 	_reset_patrol_random_action_timer()
 	_set_state(State.PATROL)
@@ -96,6 +159,7 @@ func _physics_process(delta: float) -> void:
 	ignore_player_detection_timer = maxf(0.0, ignore_player_detection_timer - delta)
 	patrol_random_jump_cooldown_timer = maxf(0.0, patrol_random_jump_cooldown_timer - delta)
 	chase_jump_cooldown_timer = maxf(0.0, chase_jump_cooldown_timer - delta)
+	attack_cooldown_timer = maxf(0.0, attack_cooldown_timer - delta)
 	_apply_gravity(delta)
 
 	var visible_player: CharacterBody2D = null
@@ -112,7 +176,7 @@ func _physics_process(delta: float) -> void:
 			if lose_sight_timer <= 0.0:
 				target_player = null
 				_set_state(State.CONFUSED)
-	else:
+	elif current_state == State.PATROL or current_state == State.CONFUSED:
 		if ignore_player_detection_timer <= 0.0:
 			visible_player = _find_visible_player_with_los()
 			if visible_player != null:
@@ -131,11 +195,24 @@ func _physics_process(delta: float) -> void:
 			_process_chase(delta)
 		State.CONFUSED:
 			_process_confused(delta)
+		State.DIZZY:
+			_process_dizzy(delta)
+		State.CHARGE:
+			_process_charge(delta)
+		State.ATTACK:
+			_process_attack(delta)
+		State.HURT:
+			_process_hurt(delta)
+		State.DEAD:
+			_process_dead(delta)
 
 	move_and_slide()
+	if current_state == State.ATTACK and is_on_wall():
+		_set_state(State.DIZZY)
 	_update_chase_jump_landing()
 	if current_state == State.PATROL and is_on_floor() and is_on_wall():
 		_flip_direction()
+	_apply_state_visuals(delta)
 	_update_animation()
 
 
@@ -143,12 +220,25 @@ func _set_state(next_state: State) -> void:
 	if current_state == next_state:
 		return
 
+	var previous_state: State = current_state
 	current_state = next_state
+	if previous_state == State.ATTACK and current_state != State.ATTACK:
+		attack_cooldown_timer = maxf(attack_cooldown_timer, attack_cooldown_after_end)
+
 	match current_state:
 		State.PATROL:
 			_clear_chase_vertical_attempt()
 			_clear_chase_jump_progress()
 			wall_check.enabled = false
+			attack_charge_timer = 0.0
+			attack_distance_remaining = 0.0
+			dizzy_timer = 0.0
+			dizzy_flip_timer = 0.0
+			state_vfx_time = 0.0
+			hurt_run_remaining = 0.0
+			hurt_run_direction = 0
+			hurt_recover_timer = 0.0
+			death_timer = 0.0
 			_reset_patrol_random_action_timer()
 			confused_timer = 0.0
 			confused_turn_timer = 0.0
@@ -158,6 +248,15 @@ func _set_state(next_state: State) -> void:
 			_clear_chase_vertical_attempt()
 			_clear_chase_jump_progress()
 			wall_check.enabled = true
+			attack_charge_timer = 0.0
+			attack_distance_remaining = 0.0
+			dizzy_timer = 0.0
+			dizzy_flip_timer = 0.0
+			state_vfx_time = 0.0
+			hurt_run_remaining = 0.0
+			hurt_run_direction = 0
+			hurt_recover_timer = 0.0
+			death_timer = 0.0
 			confused_timer = 0.0
 			confused_turn_timer = 0.0
 			confused_jump_timer = 0.0
@@ -166,10 +265,97 @@ func _set_state(next_state: State) -> void:
 			_clear_chase_vertical_attempt()
 			_clear_chase_jump_progress()
 			wall_check.enabled = false
+			attack_charge_timer = 0.0
+			attack_distance_remaining = 0.0
+			dizzy_timer = 0.0
+			dizzy_flip_timer = 0.0
+			state_vfx_time = 0.0
+			hurt_run_remaining = 0.0
+			hurt_run_direction = 0
+			hurt_recover_timer = 0.0
+			death_timer = 0.0
 			confused_timer = maxf(0.1, confused_duration)
 			confused_turn_timer = maxf(0.05, confused_turn_interval)
 			confused_jump_timer = maxf(0.0, confused_jump_delay)
 			has_confused_jumped = false
+		State.DIZZY:
+			_clear_chase_vertical_attempt()
+			_clear_chase_jump_progress()
+			wall_check.enabled = false
+			attack_charge_timer = 0.0
+			attack_distance_remaining = 0.0
+			dizzy_timer = maxf(0.1, dizzy_duration)
+			dizzy_flip_timer = maxf(0.02, dizzy_flip_interval)
+			state_vfx_time = 0.0
+			var knockback_direction: int = -attack_locked_direction if attack_locked_direction != 0 else -facing_direction
+			if knockback_direction == 0:
+				knockback_direction = -1
+			velocity.x = float(knockback_direction) * absf(dizzy_knockback_speed)
+			if is_on_floor():
+				velocity.y = -absf(dizzy_knockback_lift)
+			_set_facing_direction(facing_direction)
+			hurt_run_remaining = 0.0
+			hurt_run_direction = 0
+			hurt_recover_timer = 0.0
+			death_timer = 0.0
+		State.CHARGE:
+			_clear_chase_vertical_attempt()
+			_clear_chase_jump_progress()
+			wall_check.enabled = false
+			attack_charge_timer = maxf(0.1, attack_charge_duration)
+			attack_distance_remaining = maxf(1.0, attack_distance_tiles * attack_tile_size_px)
+			attack_locked_direction = facing_direction
+			dizzy_timer = 0.0
+			dizzy_flip_timer = 0.0
+			state_vfx_time = 0.0
+			velocity.x = 0.0
+			hurt_run_remaining = 0.0
+			hurt_run_direction = 0
+			hurt_recover_timer = 0.0
+			death_timer = 0.0
+		State.ATTACK:
+			_clear_chase_vertical_attempt()
+			_clear_chase_jump_progress()
+			wall_check.enabled = false
+			attack_charge_timer = 0.0
+			if attack_locked_direction == 0:
+				attack_locked_direction = facing_direction
+			if attack_distance_remaining <= 0.0:
+				attack_distance_remaining = maxf(1.0, attack_distance_tiles * attack_tile_size_px)
+			dizzy_timer = 0.0
+			dizzy_flip_timer = 0.0
+			state_vfx_time = 0.0
+			hurt_run_remaining = 0.0
+			hurt_run_direction = 0
+			hurt_recover_timer = 0.0
+			death_timer = 0.0
+		State.HURT:
+			_clear_chase_vertical_attempt()
+			_clear_chase_jump_progress()
+			wall_check.enabled = false
+			attack_charge_timer = 0.0
+			attack_distance_remaining = 0.0
+			dizzy_timer = 0.0
+			dizzy_flip_timer = 0.0
+			state_vfx_time = 0.0
+			hurt_run_remaining = maxf(1.0, hurt_run_distance_tiles * hurt_run_tile_size_px)
+			hurt_run_direction = facing_direction if facing_direction != 0 else 1
+			hurt_recover_timer = maxf(0.0, hurt_recover_delay)
+			death_timer = 0.0
+		State.DEAD:
+			_clear_chase_vertical_attempt()
+			_clear_chase_jump_progress()
+			wall_check.enabled = false
+			attack_charge_timer = 0.0
+			attack_distance_remaining = 0.0
+			dizzy_timer = 0.0
+			dizzy_flip_timer = 0.0
+			state_vfx_time = 0.0
+			hurt_run_remaining = 0.0
+			hurt_run_direction = 0
+			hurt_recover_timer = 0.0
+			death_timer = maxf(0.1, death_cleanup_delay)
+			_disable_combat_collision()
 
 
 func _process_patrol(delta: float) -> void:
@@ -194,9 +380,14 @@ func _process_chase(delta: float) -> void:
 		return
 
 	var delta_x: float = target_player.global_position.x - global_position.x
+	var delta_y: float = target_player.global_position.y - global_position.y
 	var player_is_above: bool = target_player.global_position.y < (global_position.y - chase_jump_player_above_threshold)
 	if absf(delta_x) > 0.01:
 		_set_facing_direction(1 if delta_x > 0.0 else -1)
+
+	if _should_start_charge_attack(delta_x, delta_y):
+		_set_state(State.CHARGE)
+		return
 
 	var target_speed: float = 0.0
 	if absf(delta_x) > chase_arrive_threshold:
@@ -219,6 +410,97 @@ func _process_chase(delta: float) -> void:
 			target_speed = 0.0
 
 	_apply_horizontal_speed(target_speed, delta)
+
+
+func _process_charge(delta: float) -> void:
+	velocity.x = move_toward(velocity.x, 0.0, deceleration * 1.7 * delta)
+	if target_player != null:
+		var delta_x: float = target_player.global_position.x - global_position.x
+		if absf(delta_x) > 0.01:
+			_set_facing_direction(1 if delta_x > 0.0 else -1)
+			attack_locked_direction = facing_direction
+
+	attack_charge_timer = maxf(0.0, attack_charge_timer - delta)
+	if attack_charge_timer <= 0.0:
+		_set_state(State.ATTACK)
+
+
+func _process_attack(delta: float) -> void:
+	if attack_locked_direction == 0:
+		attack_locked_direction = facing_direction
+
+	_set_facing_direction(attack_locked_direction)
+	velocity.x = attack_speed * float(attack_locked_direction)
+	attack_distance_remaining = maxf(0.0, attack_distance_remaining - absf(velocity.x) * delta)
+
+	if _did_attack_hit_player():
+		_set_state(State.DIZZY)
+		return
+
+	if attack_distance_remaining <= 0.0:
+		_set_state(State.CONFUSED)
+
+
+func _process_dizzy(delta: float) -> void:
+	dizzy_timer = maxf(0.0, dizzy_timer - delta)
+	dizzy_flip_timer = maxf(0.0, dizzy_flip_timer - delta)
+	if dizzy_flip_timer <= 0.0:
+		dizzy_flip_timer = maxf(0.02, dizzy_flip_interval)
+		anim.flip_h = not anim.flip_h
+
+	velocity.x = move_toward(velocity.x, 0.0, deceleration * 1.4 * delta)
+	if dizzy_timer > 0.0:
+		return
+
+	_set_facing_direction(facing_direction)
+
+	if target_player != null and _has_line_of_sight_to(target_player):
+		_set_state(State.CHASE)
+	else:
+		_set_state(State.CONFUSED)
+
+
+func _process_hurt(delta: float) -> void:
+	if hurt_run_direction == 0:
+		hurt_run_direction = facing_direction if facing_direction != 0 else 1
+
+	_set_facing_direction(hurt_run_direction)
+	velocity.x = move_toward(velocity.x, hurt_run_speed * float(hurt_run_direction), acceleration * 1.5 * delta)
+	hurt_run_remaining = maxf(0.0, hurt_run_remaining - absf(velocity.x) * delta)
+	hurt_recover_timer = maxf(0.0, hurt_recover_timer - delta)
+
+	var slammed: bool = is_on_floor() and (is_on_wall() or _is_front_blocked(hurt_run_direction))
+	if not slammed and hurt_run_remaining > 0.0:
+		return
+
+	if hurt_recover_timer > 0.0:
+		return
+
+	if target_player == null or not is_instance_valid(target_player):
+		target_player = _find_any_player_body()
+
+	if target_player != null and is_instance_valid(target_player):
+		var delta_x: float = target_player.global_position.x - global_position.x
+		if absf(delta_x) > 0.01:
+			_set_facing_direction(1 if delta_x > 0.0 else -1)
+		_set_state(State.CHASE)
+		return
+
+	if has_last_damage_source:
+		var source_delta_x: float = last_damage_source_position.x - global_position.x
+		if absf(source_delta_x) > 0.01:
+			_set_facing_direction(1 if source_delta_x > 0.0 else -1)
+
+	_set_state(State.CONFUSED)
+
+
+func _process_dead(delta: float) -> void:
+	velocity.x = move_toward(velocity.x, 0.0, deceleration * 2.0 * delta)
+	death_timer = maxf(0.0, death_timer - delta)
+	if death_timer > 0.0:
+		return
+
+	queue_free()
 
 
 func _process_confused(delta: float) -> void:
@@ -301,6 +583,7 @@ func _clear_chase_jump_progress() -> void:
 	chase_jump_in_progress = false
 	chase_jump_left_ground = false
 	chase_jump_start_ground_position = global_position
+	attack_locked_direction = facing_direction
 
 
 func _lose_interest_to_patrol() -> void:
@@ -334,6 +617,65 @@ func _is_jump_wall_detected() -> bool:
 		wall_check.enabled = true
 	wall_check.force_raycast_update()
 	return wall_check.is_colliding()
+
+
+func _should_start_charge_attack(delta_x: float, delta_y: float) -> bool:
+	if target_player == null:
+		return false
+	if attack_cooldown_timer > 0.0:
+		return false
+	if not is_on_floor():
+		return false
+	if absf(delta_x) > attack_start_distance:
+		return false
+	if absf(delta_y) > attack_vertical_tolerance:
+		return false
+	if not _has_line_of_sight_to(target_player):
+		return false
+	return true
+
+
+func _did_attack_hit_player() -> bool:
+	if hitbox == null or not hitbox.monitoring:
+		return false
+
+	for area in hitbox.get_overlapping_areas():
+		if area == null:
+			continue
+		if area is CollisionObject2D and (area as CollisionObject2D).get_collision_layer_value(PLAYER_HURTBOX_LAYER_INDEX):
+			return true
+
+	return false
+
+
+func _apply_state_visuals(delta: float) -> void:
+	var target_position: Vector2 = base_anim_position
+	var target_scale: Vector2 = base_anim_scale
+
+	if current_state == State.CHARGE:
+		state_vfx_time += delta * maxf(0.1, charge_pulse_speed)
+		var pulse: float = (sin(state_vfx_time) + 1.0) * 0.5
+		target_scale = Vector2(
+			lerpf(base_anim_scale.x, base_anim_scale.x * (1.0 + charge_squash_x), pulse),
+			lerpf(base_anim_scale.y, base_anim_scale.y * (1.0 - charge_stretch_y), pulse)
+		)
+		target_position += Vector2(randf_range(-charge_shake_intensity, charge_shake_intensity), 0.0)
+	elif current_state == State.DIZZY:
+		state_vfx_time += delta * 12.0
+		target_position += Vector2(randf_range(-dizzy_shake_intensity, dizzy_shake_intensity), 0.0)
+	elif current_state == State.HURT:
+		state_vfx_time += delta * 16.0
+		var hurt_pulse: float = (sin(state_vfx_time) + 1.0) * 0.5
+		target_scale = Vector2(
+			lerpf(base_anim_scale.x, base_anim_scale.x * 1.12, hurt_pulse),
+			lerpf(base_anim_scale.y, base_anim_scale.y * 0.88, hurt_pulse)
+		)
+		target_position += Vector2(randf_range(-0.8, 0.8), 0.0)
+	elif current_state == State.DEAD:
+		target_scale = base_anim_scale * Vector2(0.72, 0.72)
+
+	anim.position = anim.position.lerp(target_position, minf(1.0, 24.0 * delta))
+	anim.scale = anim.scale.lerp(target_scale, minf(1.0, 20.0 * delta))
 
 
 func _should_allow_ledge_drop(delta_x: float) -> bool:
@@ -407,17 +749,139 @@ func _set_facing_direction(direction: int) -> void:
 
 func _update_animation() -> void:
 	var target_animation: StringName = &"default"
-	if current_state == State.CONFUSED and anim.sprite_frames != null and anim.sprite_frames.has_animation(&"hide"):
+	if (current_state == State.CONFUSED or current_state == State.DIZZY or current_state == State.HURT or current_state == State.DEAD) and anim.sprite_frames != null and anim.sprite_frames.has_animation(&"hide"):
 		target_animation = &"hide"
 
 	if anim.animation != target_animation:
 		anim.play(target_animation)
 
-	var run_reference: float = maxf(chase_speed, 1.0)
+	var run_reference: float = maxf(maxf(chase_speed, attack_speed), 1.0)
 	if target_animation == &"default":
-		anim.speed_scale = clampf(absf(velocity.x) / run_reference, 0.75, 1.4)
+		if current_state == State.CHARGE:
+			anim.speed_scale = clampf(1.0 + (0.2 * sin(state_vfx_time * 0.7)), 0.8, 1.3)
+		else:
+			anim.speed_scale = clampf(absf(velocity.x) / run_reference, 0.75, 2.2)
 	else:
 		anim.speed_scale = 1.0
+
+
+func _initialize_stats_from_config() -> void:
+	var enemy_stats_config: Node = get_node_or_null("/root/EnemyStatsConfig")
+	if enemy_stats_config != null:
+		if enemy_stats_config.has_method("get_enemy_hp"):
+			max_hp = max(1, int(enemy_stats_config.call("get_enemy_hp", ENEMY_STATS_KEY)))
+			current_hp = max_hp
+		if enemy_stats_config.has_method("get_enemy_attack"):
+			enemy_attack_power = max(0, int(enemy_stats_config.call("get_enemy_attack", ENEMY_STATS_KEY)))
+
+	if max_hp <= 0:
+		max_hp = 1
+	if current_hp <= 0:
+		current_hp = max_hp
+
+
+func take_damage(amount: int, source_position: Vector2 = Vector2.INF) -> int:
+	if amount <= 0:
+		return current_hp
+	if current_state == State.DEAD:
+		return current_hp
+
+	current_hp = max(0, current_hp - amount)
+	if source_position != Vector2.INF:
+		last_damage_source_position = source_position
+		has_last_damage_source = true
+
+	_spawn_smoke(1.0)
+
+	if current_hp <= 0:
+		_begin_death()
+		return current_hp
+
+	if _is_damage_from_behind(source_position):
+		_set_state(State.HURT)
+	else:
+		if target_player == null or not is_instance_valid(target_player):
+			target_player = _find_any_player_body()
+		_set_state(State.CHASE)
+
+	return current_hp
+
+
+func _is_damage_from_behind(source_position: Vector2) -> bool:
+	if source_position == Vector2.INF:
+		return false
+
+	var source_is_on_right: bool = source_position.x > global_position.x
+	if facing_direction > 0:
+		return not source_is_on_right
+	return source_is_on_right
+
+
+func _begin_death() -> void:
+	if current_state == State.DEAD:
+		return
+
+	velocity = Vector2.ZERO
+	_spawn_smoke(1.6)
+	_set_state(State.DEAD)
+
+
+func _disable_combat_collision() -> void:
+	if physics_bodyshape != null:
+		physics_bodyshape.set_deferred("disabled", true)
+
+	if hitbox != null:
+		hitbox.set_deferred("monitoring", false)
+		hitbox.set_deferred("monitorable", false)
+
+	if hurtbox != null:
+		hurtbox.set_deferred("monitoring", false)
+		hurtbox.set_deferred("monitorable", false)
+
+	if vision_cone != null:
+		vision_cone.set_deferred("monitoring", false)
+		vision_cone.set_deferred("monitorable", false)
+
+
+func _spawn_smoke(scale_multiplier: float = 1.0) -> void:
+	if SMOKE_EMISSION_SCENE == null:
+		return
+
+	var smoke_instance: Node = SMOKE_EMISSION_SCENE.instantiate()
+	if not (smoke_instance is CPUParticles2D):
+		if smoke_instance != null:
+			smoke_instance.queue_free()
+		return
+
+	var smoke: CPUParticles2D = smoke_instance as CPUParticles2D
+	var parent_node: Node = get_parent() if get_parent() != null else self
+	parent_node.add_child(smoke)
+	smoke.global_position = global_position
+	smoke.scale = smoke.scale * maxf(0.1, scale_multiplier)
+	smoke.emitting = false
+	smoke.restart()
+	smoke.emitting = true
+	smoke.finished.connect(_on_smoke_finished.bind(smoke), CONNECT_ONE_SHOT)
+
+
+func _on_smoke_finished(smoke: CPUParticles2D) -> void:
+	if smoke != null:
+		smoke.queue_free()
+
+
+func _find_any_player_body() -> CharacterBody2D:
+	if target_player != null and is_instance_valid(target_player):
+		return target_player
+
+	var pausables: Array[Node] = get_tree().get_nodes_in_group("pausables")
+	for node in pausables:
+		if not (node is CharacterBody2D):
+			continue
+		var body: CharacterBody2D = node as CharacterBody2D
+		if body != null and _is_player_body(body):
+			return body
+
+	return null
 
 
 func _find_visible_player_with_los() -> CharacterBody2D:

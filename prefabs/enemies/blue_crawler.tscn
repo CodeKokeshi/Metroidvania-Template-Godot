@@ -69,7 +69,7 @@ target_position = Vector2(9, 0)
 
 [node name="hurtbox" type="Area2D" parent="." unique_id=455889053]
 collision_layer = 512
-collision_mask = 2
+collision_mask = 2050
 
 [node name="hurtbox_shape" type="CollisionShape2D" parent="hurtbox" unique_id=1371523967]
 position = Vector2(-0.5, 5.5)

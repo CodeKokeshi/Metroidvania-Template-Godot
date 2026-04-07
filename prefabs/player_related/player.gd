@@ -676,7 +676,7 @@ func _resolve_enemy_contact_key_from_hitbox(area: Area2D) -> StringName:
 	if area == null:
 		return StringName()
 
-	if area.name != "hitbox":
+	if area.name != "hitbox" and area.name != "hurtbox":
 		return StringName()
 
 	var enemy_root: Node = area.get_parent()
@@ -693,15 +693,58 @@ func _resolve_enemy_contact_key_from_hitbox(area: Area2D) -> StringName:
 	return StringName()
 
 
-func _get_configured_enemy_damage(enemy_key: StringName) -> int:
+func _get_configured_enemy_attack(enemy_key: StringName) -> int:
 	if enemy_key == StringName():
 		return 0
 
 	var enemy_stats_config: Node = get_node_or_null("/root/EnemyStatsConfig")
-	if enemy_stats_config == null or not enemy_stats_config.has_method("get_enemy_damage"):
+	if enemy_stats_config == null or not enemy_stats_config.has_method("get_enemy_attack"):
 		return 0
 
-	return max(0, int(enemy_stats_config.call("get_enemy_damage", enemy_key)))
+	return max(0, int(enemy_stats_config.call("get_enemy_attack", enemy_key)))
+
+
+func _get_player_stats_config() -> Node:
+	return get_node_or_null("/root/PlayerStatsConfig")
+
+
+func _get_player_max_hp() -> int:
+	var player_stats_config: Node = _get_player_stats_config()
+	if player_stats_config != null and player_stats_config.has_method("get_player_hp"):
+		return max(0, int(player_stats_config.call("get_player_hp")))
+	return max(0, level_base_max_health)
+
+
+func _get_player_sword_attack() -> int:
+	var player_stats_config: Node = _get_player_stats_config()
+	if player_stats_config != null and player_stats_config.has_method("get_sword_attack"):
+		return max(0, int(player_stats_config.call("get_sword_attack")))
+	return 25
+
+
+func _get_player_gun_attack() -> int:
+	var player_stats_config: Node = _get_player_stats_config()
+	if player_stats_config != null and player_stats_config.has_method("get_gun_attack"):
+		return max(0, int(player_stats_config.call("get_gun_attack")))
+	return 25
+
+
+func _try_apply_player_attack_damage_to_target(target: Node, attack_damage: int) -> void:
+	if attack_damage <= 0:
+		return
+	if not (target is Area2D):
+		return
+
+	var target_area: Area2D = target as Area2D
+	var enemy_key: StringName = _resolve_enemy_contact_key_from_hitbox(target_area)
+	if enemy_key == StringName():
+		return
+
+	var enemy_node: Node2D = target_area.get_parent() as Node2D
+	if enemy_node == null or not enemy_node.has_method("take_damage"):
+		return
+
+	enemy_node.call("take_damage", attack_damage, global_position)
 
 
 func _apply_enemy_contact_reaction(enemy_body: Node2D) -> void:
@@ -879,7 +922,7 @@ func _initialize_health_state() -> void:
 		return
 
 	if health_manager.has_method("set_level_base_health"):
-		health_manager.call("set_level_base_health", max(0, level_base_max_health), true)
+		health_manager.call("set_level_base_health", _get_player_max_hp(), true)
 
 
 func take_damage(amount: int) -> int:
@@ -1565,7 +1608,7 @@ func _on_hurtbox_area_entered(area: Area2D) -> void:
 	if enemy_key == StringName():
 		return
 
-	var enemy_damage_amount: int = _get_configured_enemy_damage(enemy_key)
+	var enemy_damage_amount: int = _get_configured_enemy_attack(enemy_key)
 	if enemy_damage_amount <= 0:
 		return
 
@@ -1612,6 +1655,7 @@ func _handle_sword_hit_contact(target: Node, source_kind: StringName) -> void:
 		return
 
 	_play_sword_hit_fx(sword_hitbox.global_position)
+	_try_apply_player_attack_damage_to_target(target, _get_player_sword_attack())
 	if not sword_hit_pause_consumed_this_attack:
 		_request_hit_pause()
 		sword_hit_pause_consumed_this_attack = true

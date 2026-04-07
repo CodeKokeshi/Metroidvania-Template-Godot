@@ -91,3 +91,22 @@ func _impact_and_return_to_pool() -> void:
 func _return_to_pool() -> void:
 	reset_to_pool()
 	returned_to_pool.emit(self)
+
+
+func _on_hitbox_area_entered(area: Area2D) -> void:
+	if not is_active or area == null:
+		return
+
+	var enemy_root: Node2D = area.get_parent() as Node2D
+	if enemy_root != null and enemy_root.has_method("take_damage"):
+		enemy_root.call("take_damage", _get_player_gun_attack(), global_position)
+
+	_impact_and_return_to_pool()
+
+
+func _get_player_gun_attack() -> int:
+	var player_stats_config: Node = get_node_or_null("/root/PlayerStatsConfig")
+	if player_stats_config != null and player_stats_config.has_method("get_gun_attack"):
+		return max(0, int(player_stats_config.call("get_gun_attack")))
+
+	return 25

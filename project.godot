@@ -20,6 +20,7 @@ config/icon="res://icon.svg"
 HitPauseManager="*res://scripts/hit_pause_manager.gd"
 HealthManager="*res://scripts/player_health_manager.gd"
 EnemyStatsConfig="*res://scripts/enemy_stats_config.gd"
+PlayerStatsConfig="*res://scripts/player_stats_config.gd"
 
 [global_group]
 
@@ -90,6 +91,7 @@ alt_attack={
 2d_physics/layer_9="vision_cones"
 2d_physics/layer_10="enemy_hurtbox"
 2d_physics/layer_11="enemy_hitbox"
+2d_physics/layer_12="bullet_hitbox"
 
 [physics]
 
